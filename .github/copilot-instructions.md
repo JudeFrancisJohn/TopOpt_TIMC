@@ -4,7 +4,7 @@ Quick goal
 - This workspace contains a small topology-optimization + stochastic material-parameter FE project written in Julia (Ferrite.jl + custom utilities). Primary scripts live in `src/` and helpers in `utils/`.
 
 Big picture (what matters to an AI contributor)
-- `src/COPY_stochastic_modified_v2 copy 2.jl` is the main driver for stochastic runs + topology optimization. It composes together input, FEA, KL-based random field generation, and OC-based design updates. Additionally, it includes an option for multiple runs.
+- `src/COPY_stochastic_modified_v2_MC.jl` is the main driver for stochastic runs + topology optimization. It composes together input, FEA, KL-based random field generation, and OC-based design updates. Additionally, it includes an option for multiple runs.
 - `utils/FE_updated_stoch.jl` contains the finite-element material routines, stress/tangent calculations for transverse isotropy, VTK export helpers, and a MaterialField type used by per-element material sampling.
 - `utils/stochastic_utils.jl` provides KL expansion utilities: covariance builder, KL_realization (modes, eigen solvers), and helpers to build per-element material fields.
 - `utils/opt.jl` implements the OC update (`OC`) and sensitivity filter (`check`) used by the topology loop.
