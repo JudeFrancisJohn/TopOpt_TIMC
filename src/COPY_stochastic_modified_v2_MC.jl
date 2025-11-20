@@ -417,4 +417,35 @@ function multiple_runs(nruns=3)
     return run_logs
 end
 
-run_logs = multiple_runs(3)
+function run_single_design(run_i::Int, coeffs_dict::Dict{Symbol,Vector{Float64}})
+    # Generate fields with provided coeffs
+    # Note: We use the same parameters as in sample_material_fields
+    fields = KL_realization(mp, coords_elem;
+        σs=Dict(:μ_l => 0.8 * mp.μ_l,
+            :μ_t => 0.1 * mp.μ_t,
+            :α => 0.8 * mp.alpha,
+            :β => 0.8 * mp.beta),
+        Lc=0.01, N_modes=80, use_centroids=false,
+        make_sparse=true, kernel=:exponential, mode=:lognormal,
+        provided_coeffs=coeffs_dict)
+
+    stats = shear_stats_from_fields(fields)
+
+    mf = build_material_field(fields; use_centroids=false, eltype_out=Float32)
+
+    # Update stiffness matrices
+    build_KEStore!(dh, mf, nnodes_loc, avg_mp_store)
+
+    # Reset global displacement vector
+    global u = zeros(ndofs(dh))
+
+    # Run optimization
+    # We pass 0 for resample_attempts and nothing for seed since we provided coeffs
+    log_entry = topopt_run(run_i, stats, 0, nothing)
+
+    return log_entry
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    run_logs = multiple_runs(3)
+end

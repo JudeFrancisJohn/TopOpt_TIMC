@@ -1,24 +1,24 @@
 function covariance_matrix_from_elemcoords(coords_elem::AbstractArray, σ::Float64, Lc::Float64;
-                                          use_centroids::Bool=false,
-                                          make_sparse::Bool=false,
-                                          cutoff_mult::Float64=3.0,
-                                          kernel::Symbol = :exponential,
-                                          matern_nu::Float64 = 1.5,
-                                          eltype_out=Float64)
+    use_centroids::Bool=false,
+    make_sparse::Bool=false,
+    cutoff_mult::Float64=3.0,
+    kernel::Symbol=:exponential,
+    matern_nu::Float64=1.5,
+    eltype_out=Float64)
     nelem, nloc = size(coords_elem)
 
     # collect points
     if use_centroids
-        pts = Vector{typeof(coords_elem[1,1])}(undef, nelem)
+        pts = Vector{typeof(coords_elem[1, 1])}(undef, nelem)
         for ei in 1:nelem
-            s = zero(coords_elem[1,1])
+            s = zero(coords_elem[1, 1])
             for ni in 1:nloc
                 s += coords_elem[ei, ni]
             end
             pts[ei] = s / nloc
         end
     else
-        pts = Vector{typeof(coords_elem[1,1])}(undef, nelem * nloc)
+        pts = Vector{typeof(coords_elem[1, 1])}(undef, nelem * nloc)
         k = 1
         for ei in 1:nelem
             for ni in 1:nloc
@@ -30,12 +30,12 @@ function covariance_matrix_from_elemcoords(coords_elem::AbstractArray, σ::Float
 
     n = length(pts)
     if n == 0
-        return zeros(eltype_out,0,0), pts
+        return zeros(eltype_out, 0, 0), pts
     end
 
     cutoff = cutoff_mult * Lc
 
-    kernel_val = function(r)
+    kernel_val = function (r)
 
         if kernel == :exponential
             return (σ^2) * exp(-r / Lc)
@@ -50,7 +50,7 @@ function covariance_matrix_from_elemcoords(coords_elem::AbstractArray, σ::Float
                 return (σ^2) * (1.0 + s) * exp(-s)
             elseif isapprox(matern_nu, 2.5; atol=1e-8)
                 s = sqrt(5.0) * r / Lc
-                return (σ^2) * (1.0 + s + (s^2)/3.0) * exp(-s)
+                return (σ^2) * (1.0 + s + (s^2) / 3.0) * exp(-s)
             else
                 # fallback to exponential
                 return (σ^2) * exp(-r / Lc)
@@ -63,15 +63,21 @@ function covariance_matrix_from_elemcoords(coords_elem::AbstractArray, σ::Float
     end
 
     if make_sparse
-        I = Int[]; J = Int[]; V = eltype_out[]
+        I = Int[]
+        J = Int[]
+        V = eltype_out[]
         for i in 1:n
             pi = pts[i]
             for j in i:n
                 r = norm(pi - pts[j])
                 if r <= cutoff
-                    push!(I, i); push!(J, j); push!(V, eltype_out(kernel_val(r)))
+                    push!(I, i)
+                    push!(J, j)
+                    push!(V, eltype_out(kernel_val(r)))
                     if i != j
-                        push!(I, j); push!(J, i); push!(V, eltype_out(kernel_val(r)))
+                        push!(I, j)
+                        push!(J, i)
+                        push!(V, eltype_out(kernel_val(r)))
                     end
                 end
             end
@@ -83,8 +89,8 @@ function covariance_matrix_from_elemcoords(coords_elem::AbstractArray, σ::Float
             for j in i:n
                 r = norm(pts[i] - pts[j])
                 val = kernel_val(r)
-                C[i,j] = eltype_out(val)
-                C[j,i] = C[i,j]
+                C[i, j] = eltype_out(val)
+                C[j, i] = C[i, j]
             end
         end
     end
@@ -93,10 +99,11 @@ function covariance_matrix_from_elemcoords(coords_elem::AbstractArray, σ::Float
 end
 
 function KL_realization(material_params::MaterialParams, coords_elem::AbstractArray;
-                        σs=Dict{Symbol,Float64}(), Lc=0.1, N_modes=5,
-                        use_centroids=false, make_sparse=true, eltype_out=Float32,
-                        kernel::Symbol = :gaussian, matern_nu::Float64=1.5,
-                        mode::Symbol = :additive, seed::Union{Nothing,Integer}=nothing)
+    σs=Dict{Symbol,Float64}(), Lc=0.1, N_modes=5,
+    use_centroids=false, make_sparse=true, eltype_out=Float32,
+    kernel::Symbol=:gaussian, matern_nu::Float64=1.5,
+    mode::Symbol=:additive, seed::Union{Nothing,Integer}=nothing,
+    provided_coeffs::Union{Nothing,Dict{Symbol,Vector{Float64}}}=nothing)
     """
     Generate Karhunen–Loève (KL) realizations for selectable scalar material fields.
 
@@ -114,11 +121,14 @@ function KL_realization(material_params::MaterialParams, coords_elem::AbstractAr
     - kernel, matern_nu: covariance kernel controls forwarded to covariance_matrix_from_elemcoords.
     - mode: :additive (field = mean + KL) or :lognormal (field = mean * exp(KL)).
     - seed: Random seed for reproducibility. If nothing, uses current RNG state.
+    - provided_coeffs: Optional Dict mapping property symbols to coefficient vectors. 
+                       If provided, these coefficients are used instead of random sampling.
+                       Useful for MCMC or reconstructing specific realizations.
 
     Returns a Dict{Symbol,Any} where each key is a material property symbol and values are
     either vectors (if use_centroids) or arrays sized (n_elem, n_loc) matching coords_elem.
     """
-    
+
     # Set seed for reproducibility if provided
     if !isnothing(seed)
         Random.seed!(seed)
@@ -131,8 +141,8 @@ function KL_realization(material_params::MaterialParams, coords_elem::AbstractAr
     properties = (
         :μ_l => material_params.μ_l,
         :μ_t => material_params.μ_t,
-        :α   => material_params.alpha,
-        :β   => material_params.beta,
+        :α => material_params.alpha,
+        :β => material_params.beta,
     )
 
     for (prop_sym, mean_value) in properties
@@ -141,12 +151,12 @@ function KL_realization(material_params::MaterialParams, coords_elem::AbstractAr
         sigma = get(σs, prop_sym, default_sigma)
 
         cov_matrix, points = covariance_matrix_from_elemcoords(coords_elem, sigma, Lc;
-                                                              use_centroids=use_centroids,
-                                                              make_sparse=make_sparse,
-                                                              cutoff_mult=3.0,
-                                                              kernel=kernel,
-                                                              matern_nu=matern_nu,
-                                                              eltype_out=eltype_out)
+            use_centroids=use_centroids,
+            make_sparse=make_sparse,
+            cutoff_mult=3.0,
+            kernel=kernel,
+            matern_nu=matern_nu,
+            eltype_out=eltype_out)
 
         n_dofs = size(cov_matrix, 1)
         if n_dofs == 0
@@ -203,7 +213,26 @@ function KL_realization(material_params::MaterialParams, coords_elem::AbstractAr
         eigenvals = max.(eigenvals, zero(real(eigenvals[1])))
 
         # sample standard normal coefficients and build the KL field
-        coeffs = randn(n_modes_final)
+        if !isnothing(provided_coeffs) && haskey(provided_coeffs, prop_sym)
+            input_c = provided_coeffs[prop_sym]
+            # If provided coeffs are fewer than modes, pad with zeros or randn? 
+            # For MCMC, we expect the vector to be of size N_modes. 
+            # But n_modes_final might be smaller if eigen-decomposition truncated.
+            # We'll take the first n_modes_final elements.
+            if length(input_c) >= n_modes_final
+                coeffs = input_c[1:n_modes_final]
+            else
+                # If we have fewer coeffs than modes, we might need to generate the rest or error.
+                # For now, let's fill with zeros or error. 
+                # But to be safe for MCMC where we might fix N_modes, let's assume the user provides enough.
+                # If not, we'll just use what we have and pad with random? No, that breaks determinism.
+                # Let's pad with zeros.
+                coeffs = zeros(n_modes_final)
+                coeffs[1:length(input_c)] = input_c
+            end
+        else
+            coeffs = randn(n_modes_final)
+        end
         mode_amplitudes = sqrt.(eigenvals) .* coeffs
         gaussian_field = eigenvecs * mode_amplitudes
 
