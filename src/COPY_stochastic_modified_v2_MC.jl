@@ -1,5 +1,5 @@
-using LinearAlgebra, Printf,SparseArrays,StaticArrays
-using Plots,Dates,Statistics, DelimitedFiles
+using LinearAlgebra, Printf, SparseArrays, StaticArrays
+using Plots, Dates, Statistics, DelimitedFiles
 using Ferrite
 using TickTock, Parameters, Random
 using IterativeSolvers
@@ -50,7 +50,7 @@ nnodes = size(nodes)
 dim = 2
 nnodes_per_cell = length(cells[1].nodes)   # 4 for quadrilateral (nodes per element)
 nelem = length(cells)
-C = zeros(3,3)
+C = zeros(3, 3)
 # store a Vec{2,Float64} for each element/node: shape (nelem, nnodes_per_cell)
 coords_elem = Array{Vec{2,Float64}}(undef, nelem, nnodes_per_cell)
 for ei in 1:nelem
@@ -65,13 +65,13 @@ end
 
 ndofs_per_cell_local = ndofs_per_cell(dh)
 Bmat = Array{Float64}(undef, 3, ndofs_per_cell_local)
-ϵ   = Vector{Float64}(undef, 3)
-σ   = similar(ϵ)
-ℂ   = Array{Float64}(undef, 3, 3)
+ϵ = Vector{Float64}(undef, 3)
+σ = similar(ϵ)
+ℂ = Array{Float64}(undef, 3, 3)
 KE_store = Vector{Matrix{Float64}}(undef, nelem)
 
 num_cells = length(CellIterator(dh))
-if num_cells == (nelx*nely)
+if num_cells == (nelx * nely)
     println("Pre-check: Grid size matches: $(num_cells) cells = $(nelx)×$(nely)")
 end
 
@@ -94,13 +94,13 @@ loop = 0
 vol_history = Float64[]
 
 const DENSITY_BIN_EDGES = (0.0, LOG_BIN_LOW, LOG_BIN_MID, LOG_BIN_HIGH)
-const DensityLogEntry = NamedTuple{(:iteration, :bin_counts, :bin_proportions, :poor_design), Tuple{Int, NTuple{3, Int}, NTuple{3, Float64}, Bool}}
-const ShearStat = NamedTuple{(:mean, :std, :cov), Tuple{Float64, Float64, Float64}}
-const ShearStats = NamedTuple{(:μ_l, :μ_t), Tuple{ShearStat, ShearStat}}
-const RunLogEntry = NamedTuple{(:run_index, :status, :error, :compliance, :density_history, :final_density_log, :final_volume, :shear_stats, :resample_attempts, :material_seed, :output_dir, :vtu_file, :log_file), Tuple{Int, Symbol, Union{Nothing, String}, Float64, Vector{DensityLogEntry}, Union{DensityLogEntry, Nothing}, Float64, ShearStats, Int, Union{Nothing, Int}, String, Union{Nothing, String}, Union{Nothing, String}}}
+const DensityLogEntry = NamedTuple{(:iteration, :bin_counts, :bin_proportions, :poor_design),Tuple{Int,NTuple{3,Int},NTuple{3,Float64},Bool}}
+const ShearStat = NamedTuple{(:mean, :std, :cov),Tuple{Float64,Float64,Float64}}
+const ShearStats = NamedTuple{(:μ_l, :μ_t),Tuple{ShearStat,ShearStat}}
+const RunLogEntry = NamedTuple{(:run_index, :status, :error, :compliance, :density_history, :final_density_log, :final_volume, :shear_stats, :resample_attempts, :material_seed, :output_dir, :vtu_file, :log_file),Tuple{Int,Symbol,Union{Nothing,String},Float64,Vector{DensityLogEntry},Union{DensityLogEntry,Nothing},Float64,ShearStats,Int,Union{Nothing,Int},String,Union{Nothing,String},Union{Nothing,String}}}
 const MATERIAL_SEED_BASE = 1000
 
-function write_run_log(run_dir::AbstractString; status::Symbol, shear_stats::ShearStats, resample_attempts::Int, material_seed, density_log, compliance::Float64, final_volume::Float64, final_change, guard_threshold::Float64, max_resamples::Int, enforce_guard::Bool, abort_on_guard::Bool, vtu_file, error::Union{Nothing, String})
+function write_run_log(run_dir::AbstractString; status::Symbol, shear_stats::ShearStats, resample_attempts::Int, material_seed, density_log, compliance::Float64, final_volume::Float64, final_change, guard_threshold::Float64, max_resamples::Int, enforce_guard::Bool, abort_on_guard::Bool, vtu_file, error::Union{Nothing,String})
     mkpath(run_dir)
     log_path = joinpath(run_dir, "run_log.txt")
     seed_info = isnothing(material_seed) ? "N/A" : string(material_seed)
@@ -161,10 +161,10 @@ end
 function log_density_metrics!(storage::Vector{DensityLogEntry}, iteration::Int, x::AbstractVector{<:Real})
     counts, proportions = compute_density_metrics(x)
     poor_flag = proportions[2] > LOG_BAD_BIN_THRESHOLD
-    push!(storage, (iteration = iteration,
-                    bin_counts = counts,
-                    bin_proportions = proportions,
-                    poor_design = poor_flag))
+    push!(storage, (iteration=iteration,
+        bin_counts=counts,
+        bin_proportions=proportions,
+        poor_design=poor_flag))
     return poor_flag
 end
 
@@ -175,15 +175,15 @@ function compute_shear_stat(values::AbstractVector{<:Real})
     s = std(values)
     denom = max(abs(m), eps())
     cov = s / denom
-    return (mean = m, std = s, cov = cov)::ShearStat
+    return (mean=m, std=s, cov=cov)::ShearStat
 end
 
-function shear_stats_from_fields(fields::Dict{Symbol, Any})
+function shear_stats_from_fields(fields::Dict{Symbol,Any})
     haskey(fields, :μ_l) || error("μ_l field missing from stochastic realization")
     haskey(fields, :μ_t) || error("μ_t field missing from stochastic realization")
     μ_l_vals = flatten_field_values(fields[:μ_l])
     μ_t_vals = flatten_field_values(fields[:μ_t])
-    return (μ_l = compute_shear_stat(μ_l_vals), μ_t = compute_shear_stat(μ_t_vals))::ShearStats
+    return (μ_l=compute_shear_stat(μ_l_vals), μ_t=compute_shear_stat(μ_t_vals))::ShearStats
 end
 
 function shear_variation_ok(stats::ShearStats)
@@ -193,19 +193,19 @@ end
 
 function sample_material_fields(run_index)
     max_attempts = max(LOG_SHEAR_MAX_RESAMPLES, 1)
-    fields = Dict{Symbol, Any}()
-    stats = (μ_l = (mean = 0.0, std = 0.0, cov = Inf), μ_t = (mean = 0.0, std = 0.0, cov = Inf))::ShearStats
+    fields = Dict{Symbol,Any}()
+    stats = (μ_l=(mean=0.0, std=0.0, cov=Inf), μ_t=(mean=0.0, std=0.0, cov=Inf))::ShearStats
     seed_used = 0
     for attempt in 1:max_attempts
         seed = MATERIAL_SEED_BASE + (run_index - 1) * max_attempts + attempt - 1
         candidate_fields = KL_realization(mp, coords_elem;
-                            σs = Dict(:μ_l => 0.8 * mp.μ_l,
-                                      :μ_t => 0.1 * mp.μ_t,
-                                      :α   => 0.8 * mp.alpha,
-                                      :β   => 0.8 * mp.beta),
-                            Lc=0.01, N_modes=80, use_centroids=false,
-                            make_sparse=true, kernel=:exponential, mode=:lognormal,
-                            seed=seed)
+            σs=Dict(:μ_l => 0.8 * mp.μ_l,
+                :μ_t => 0.1 * mp.μ_t,
+                :α => 0.8 * mp.alpha,
+                :β => 0.8 * mp.beta),
+            Lc=0.01, N_modes=80, use_centroids=false,
+            make_sparse=true, kernel=:exponential, mode=:lognormal,
+            seed=seed)
         candidate_stats = shear_stats_from_fields(candidate_fields)
         seed_used = seed
         fields = candidate_fields
@@ -221,15 +221,15 @@ function sample_material_fields(run_index)
     return true, fields, stats, max_attempts, seed_used
 end
 
-function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, material_seed::Union{Nothing, Int})
+function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, material_seed::Union{Nothing,Int})
     x = ones(num_cells)
     change = 1.0
     loop = 0
     vol_history = Float64[]
     last_compliance = 0.0
     status = :success
-    err_msg::Union{Nothing, String} = nothing
-    final_vtu::Union{Nothing, String} = nothing
+    err_msg::Union{Nothing,String} = nothing
+    final_vtu::Union{Nothing,String} = nothing
 
     run_dir = joinpath(save_path, "run_$(run_i)")
     final_dir = joinpath(run_dir, "final")
@@ -255,7 +255,7 @@ function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, mate
 
                 x_cell = x[cell_index]
                 c += x_cell^penal * (ue' * ke * ue)
-                dc[cell_index] = -penal * x_cell^(penal-1) * (ue' * ke * ue)
+                dc[cell_index] = -penal * x_cell^(penal - 1) * (ue' * ke * ue)
             end
 
             dc = check(nelx, nely, rmin, x, dc)
@@ -290,7 +290,7 @@ function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, mate
 
     final_name = @sprintf("run_%d_%s_iter_%03d", run_i, string(status), final_iter)
     final_vtu_path = joinpath(final_dir, final_name * ".vtu")
-    export_vtk(u, dh, grid, cv_post, mp, ip, final_dir, final_name; density = x)
+    export_vtk(u, dh, grid, cv_post, mp, ip, final_dir, final_name; density=x)
     final_vtu = final_vtu_path
 
     println("\n" * "="^80)
@@ -318,36 +318,36 @@ function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, mate
     println("="^80)
 
     log_path = write_run_log(run_dir;
-                             status=status,
-                             shear_stats=shear_stats,
-                             resample_attempts=resample_attempts,
-                             material_seed=material_seed,
-                             density_log=final_density_log,
-                             compliance=last_compliance,
-                             final_volume=final_volume,
-                             final_change=change,
-                             guard_threshold=LOG_SHEAR_COV_THRESHOLD,
-                             max_resamples=LOG_SHEAR_MAX_RESAMPLES,
-                             enforce_guard=LOG_ENFORCE_SHEAR_VARIATION,
-                             abort_on_guard=LOG_ABORT_ON_SHEAR_FAILURE,
-                             vtu_file=final_vtu,
-                             error=err_msg)
+        status=status,
+        shear_stats=shear_stats,
+        resample_attempts=resample_attempts,
+        material_seed=material_seed,
+        density_log=final_density_log,
+        compliance=last_compliance,
+        final_volume=final_volume,
+        final_change=change,
+        guard_threshold=LOG_SHEAR_COV_THRESHOLD,
+        max_resamples=LOG_SHEAR_MAX_RESAMPLES,
+        enforce_guard=LOG_ENFORCE_SHEAR_VARIATION,
+        abort_on_guard=LOG_ABORT_ON_SHEAR_FAILURE,
+        vtu_file=final_vtu,
+        error=err_msg)
 
-    return (run_index = run_i,
-            status = status,
-            error = err_msg,
-            compliance = last_compliance,
-            density_history = density_history,
-            final_density_log = final_density_log,
-            final_volume = final_volume,
-            shear_stats = shear_stats,
-            resample_attempts = resample_attempts,
-            material_seed = material_seed,
-            output_dir = final_dir,
-            vtu_file = final_vtu,
-            log_file = log_path)
+    return (run_index=run_i,
+        status=status,
+        error=err_msg,
+        compliance=last_compliance,
+        density_history=density_history,
+        final_density_log=final_density_log,
+        final_volume=final_volume,
+        shear_stats=shear_stats,
+        resample_attempts=resample_attempts,
+        material_seed=material_seed,
+        output_dir=final_dir,
+        vtu_file=final_vtu,
+        log_file=log_path)
 end
- 
+
 
 function multiple_runs(nruns=3)
     run_logs = Vector{RunLogEntry}()
@@ -383,34 +383,34 @@ function multiple_runs(nruns=3)
             err_msg = "Shear COV threshold not met after $(attempts) attempts (μ_l cov=$(round(shear_stats.μ_l.cov, digits=4)), μ_t cov=$(round(shear_stats.μ_t.cov, digits=4)))"
 
             log_path = write_run_log(run_dir;
-                                     status = :invalid_material,
-                                     shear_stats = shear_stats,
-                                     resample_attempts = attempts,
-                                     material_seed = seed_used,
-                                     density_log = final_density_log,
-                                     compliance = 0.0,
-                                     final_volume = final_volume,
-                                     final_change = nothing,
-                                     guard_threshold = LOG_SHEAR_COV_THRESHOLD,
-                                     max_resamples = LOG_SHEAR_MAX_RESAMPLES,
-                                     enforce_guard = LOG_ENFORCE_SHEAR_VARIATION,
-                                     abort_on_guard = LOG_ABORT_ON_SHEAR_FAILURE,
-                                     vtu_file = nothing,
-                                     error = err_msg)
+                status=:invalid_material,
+                shear_stats=shear_stats,
+                resample_attempts=attempts,
+                material_seed=seed_used,
+                density_log=final_density_log,
+                compliance=0.0,
+                final_volume=final_volume,
+                final_change=nothing,
+                guard_threshold=LOG_SHEAR_COV_THRESHOLD,
+                max_resamples=LOG_SHEAR_MAX_RESAMPLES,
+                enforce_guard=LOG_ENFORCE_SHEAR_VARIATION,
+                abort_on_guard=LOG_ABORT_ON_SHEAR_FAILURE,
+                vtu_file=nothing,
+                error=err_msg)
 
-            push!(run_logs, (run_index = i,
-                             status = :invalid_material,
-                             error = err_msg,
-                             compliance = 0.0,
-                             density_history = density_history,
-                             final_density_log = final_density_log,
-                             final_volume = final_volume,
-                             shear_stats = shear_stats,
-                             resample_attempts = attempts,
-                             material_seed = seed_used,
-                             output_dir = final_dir,
-                             vtu_file = nothing,
-                             log_file = log_path))
+            push!(run_logs, (run_index=i,
+                status=:invalid_material,
+                error=err_msg,
+                compliance=0.0,
+                density_history=density_history,
+                final_density_log=final_density_log,
+                final_volume=final_volume,
+                shear_stats=shear_stats,
+                resample_attempts=attempts,
+                material_seed=seed_used,
+                output_dir=final_dir,
+                vtu_file=nothing,
+                log_file=log_path))
         end
     end
 
