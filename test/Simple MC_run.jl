@@ -29,7 +29,6 @@ Higher score = 'worse' design (which is what we want to find).
 """
 function evaluate_badness(log_entry)
     # If the run failed, return a score of 0.0 (or very low).
-    # This forces the MCMC to reject the crash and stay at the previous valid design.
     if log_entry.status != :success
         return 0.0
     end
