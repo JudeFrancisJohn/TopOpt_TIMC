@@ -1,0 +1,23 @@
+status=failed
+resample_attempts=0
+material_seed=N/A
+guard_threshold=35.0
+guard_enforced=true
+abort_on_guard=true
+max_resamples=20
+shear_stats_mu_l_mean=3999.822685071152
+shear_stats_mu_l_std=68183.99173147794
+shear_stats_mu_l_cov=17.04675359384463
+shear_stats_mu_t_mean=1.000027403170729
+shear_stats_mu_t_std=0.02436840022401377
+shear_stats_mu_t_cov=0.02436773247088059
+final_compliance=0.0
+final_volume=1.0
+final_change=1.0
+density_bin_counts=(0, 0, 1200)
+density_bin_proportions=(0.0, 0.0, 1.0)
+density_poor_flag=false
+final_iteration=1
+vtu_file=c:\Users\judef\Desktop\COMMAS\SEM4\TopOpt\src\..\output\mcmc_chain_20251120_144814\run_2\final\run_2_failed_iter_001.vtu
+error=DomainError with -5.946047691054341e-11:
+sqrt was called with a negative real argument but will only return a complex result if called with a complex argument. Try sqrt(Complex(x)).

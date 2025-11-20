@@ -28,22 +28,14 @@ Evaluate the 'badness' of a design.
 Higher score = 'worse' design (which is what we want to find).
 """
 function evaluate_badness(log_entry)
-    # If the run failed, we might consider it very bad (high score)
-    # or we might want to focus on "smeared" designs that actually converged.
+    # If the run failed, return a score of 0.0 (or very low).
+    # This forces the MCMC to reject the crash and stay at the previous valid design.
     if log_entry.status != :success
-        # For now, let's treat failure as a high badness score, 
-        # but maybe not higher than a very smeared design?
-        # Or maybe we just want to find failures?
-        # Let's assign a score of 1.0 for failure.
-        return 1.0
+        return 0.0
     end
 
-    # Use the proportion of intermediate densities (bin 2) as the badness metric.
-    # bin_proportions is (low, mid, high)
-    # We want to maximize the 'mid' proportion.
     props = log_entry.final_density_log.bin_proportions
     mid_prop = props[2]
-
     return mid_prop
 end
 

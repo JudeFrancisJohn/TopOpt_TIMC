@@ -199,10 +199,10 @@ function sample_material_fields(run_index)
     for attempt in 1:max_attempts
         seed = MATERIAL_SEED_BASE + (run_index - 1) * max_attempts + attempt - 1
         candidate_fields = KL_realization(mp, coords_elem;
-            σs=Dict(:μ_l => 0.8 * mp.μ_l,
+            σs=Dict(:μ_l => 0.1 * mp.μ_l,
                 :μ_t => 0.1 * mp.μ_t,
-                :α => 0.8 * mp.alpha,
-                :β => 0.8 * mp.beta),
+                :α => 0.1 * mp.alpha,
+                :β => 0.1 * mp.beta),
             Lc=0.01, N_modes=80, use_centroids=false,
             make_sparse=true, kernel=:exponential, mode=:lognormal,
             seed=seed)
