@@ -32,13 +32,16 @@ run_mode = "stochastic"
 dt = Dates.format(Dates.now(), "yyyymmdd_HH")
 run_name = "$(run_mode)_$(dt)"   # change this string to a custom run name if desired
 
+const WRITE_OUTPUT_FILES = false
+
 
 save_root = joinpath(@__DIR__, "..", "output")
 save_path = joinpath(save_root, run_name)
-mkpath(save_path)
-
-remove_files(save_path)
-export_vtk(u_d, dh, grid, cv_post, mp, ip, save_path, 0)
+if WRITE_OUTPUT_FILES
+    mkpath(save_path)
+    remove_files(save_path)
+    export_vtk(u_d, dh, grid, cv_post, mp, ip, save_path, 0)
+end
 
 cells = getcells(grid)
 elements = [cell.nodes for cell in cells]
