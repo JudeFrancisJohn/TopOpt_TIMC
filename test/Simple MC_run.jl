@@ -14,6 +14,8 @@ const N_CHAIN = 20          # Number of MCMC iterations
 const N_MODES = 80          # Number of KL modes (must match what's used in run_single_design/KL_realization)
 const PROPOSAL_SIGMA = 0.5 # Step size for random walk proposal
 const BETA = 50.0           # Inverse temperature. Higher = stronger preference for "bad" designs.
+const DENSITY_WEIGHT = 5.0
+const COMPLIANCE_WEIGHT = 1.0e-3
 
 # Create a specific output directory for this MCMC chain
 dt_str = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
@@ -27,6 +29,17 @@ println("Output directory: $save_path")
 Evaluate the 'badness' of a design.
 Higher score = 'worse' design (which is what we want to find).
 """
+function get_compliance(log_entry)
+    for name in (:compliance, :final_compliance, :objective, :final_objective)
+        if hasproperty(log_entry, name)
+            return getfield(log_entry, name)
+        elseif isa(log_entry, AbstractDict) && haskey(log_entry, name)
+            return log_entry[name]
+        end
+    end
+    return nothing
+end
+
 function evaluate_badness(log_entry)
     # If the run failed, return a score of 0.0 (or very low).
     if log_entry.status != :success
@@ -113,8 +126,8 @@ for i in 2:N_CHAIN
     # (Proposal distribution is symmetric, so q factor cancels out)
 
     score_diff = proposal_score - current_score
-    alpha = exp(BETA * score_diff)
-    acceptance_prob = min(1.0, alpha)
+    log_acceptance = BETA * score_diff
+    acceptance_prob = log_acceptance >= 0 ? 1.0 : exp(log_acceptance)
 
     println("  Current Score:  $(round(current_score, digits=4))")
     println("  Proposal Score: $(round(proposal_score, digits=4))")
