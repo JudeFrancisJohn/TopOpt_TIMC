@@ -12,7 +12,7 @@ include(joinpath(@__DIR__, "..", "src", "COPY_stochastic_modified_v2_MC.jl"))
 # --- MCMC Configuration ---
 const N_CHAIN = 20          # Number of MCMC iterations
 const N_MODES = 80          # Number of KL modes (must match what's used in run_single_design/KL_realization)
-const PROPOSAL_SIGMA = 0.05 # Step size for random walk proposal
+const PROPOSAL_SIGMA = 0.5 # Step size for random walk proposal
 const BETA = 50.0           # Inverse temperature. Higher = stronger preference for "bad" designs.
 
 # Create a specific output directory for this MCMC chain
@@ -33,9 +33,36 @@ function evaluate_badness(log_entry)
         return 0.0
     end
 
-    props = log_entry.final_density_log.bin_proportions
-    mid_prop = props[2]
-    return mid_prop
+    props = if hasproperty(log_entry, :final_density_log)
+        getfield(log_entry, :final_density_log)
+    elseif isa(log_entry, AbstractDict) && haskey(log_entry, :final_density_log)
+        log_entry[:final_density_log]
+    else
+        return 0.0
+    end
+
+    bin_props = if hasproperty(props, :bin_proportions)
+        getfield(props, :bin_proportions)
+    elseif isa(props, AbstractDict) && haskey(props, :bin_proportions)
+        props[:bin_proportions]
+    else
+        return 0.0
+    end
+
+    # Focus on intermediary density (bin 2)
+    mid_prop = bin_props[2]
+    mid_density_term = DENSITY_WEIGHT * mid_prop
+
+    # Compliance term (optional, very small weight)
+    comp = get_compliance(log_entry)
+    compliance_term = if comp === nothing
+        0.0
+    else
+        COMPLIANCE_WEIGHT * comp
+    end
+
+    # Total badness: prioritize intermediary density
+    return mid_density_term + compliance_term
 end
 
 # --- Initialization ---

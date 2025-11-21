@@ -421,10 +421,10 @@ function run_single_design(run_i::Int, coeffs_dict::Dict{Symbol,Vector{Float64}}
     # Generate fields with provided coeffs
     # Note: We use the same parameters as in sample_material_fields
     fields = KL_realization(mp, coords_elem;
-        σs=Dict(:μ_l => 0.8 * mp.μ_l,
-            :μ_t => 0.1 * mp.μ_t,
-            :α => 0.8 * mp.alpha,
-            :β => 0.8 * mp.beta),
+        σs=Dict(:μ_l => 0.5,
+            :μ_t => 0.5,
+            :α => 0.5,
+            :β => 0.5),
         Lc=0.01, N_modes=80, use_centroids=false,
         make_sparse=true, kernel=:exponential, mode=:lognormal,
         provided_coeffs=coeffs_dict)
