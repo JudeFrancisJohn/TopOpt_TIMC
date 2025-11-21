@@ -234,9 +234,11 @@ function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, mate
     err_msg::Union{Nothing,String} = nothing
     final_vtu::Union{Nothing,String} = nothing
 
-    run_dir = joinpath(save_path, "run_$(run_i)")
-    final_dir = joinpath(run_dir, "final")
-    mkpath(final_dir)
+    run_dir = WRITE_OUTPUT_FILES ? joinpath(save_path, "run_$(run_i)") : ""
+    final_dir = WRITE_OUTPUT_FILES ? joinpath(run_dir, "final") : ""
+    if WRITE_OUTPUT_FILES
+        mkpath(final_dir)
+    end
 
     density_history = Vector{DensityLogEntry}()
     log_density_metrics!(density_history, loop, x)
@@ -291,10 +293,14 @@ function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, mate
     final_volume = sum(x) / num_cells
     final_iter = final_density_log.iteration
 
-    final_name = @sprintf("run_%d_%s_iter_%03d", run_i, string(status), final_iter)
-    final_vtu_path = joinpath(final_dir, final_name * ".vtu")
-    export_vtk(u, dh, grid, cv_post, mp, ip, final_dir, final_name; density=x)
-    final_vtu = final_vtu_path
+    final_name = ""
+    final_vtu_path = ""
+    if WRITE_OUTPUT_FILES
+        final_name = @sprintf("run_%d_%s_iter_%03d", run_i, string(status), final_iter)
+        final_vtu_path = joinpath(final_dir, final_name * ".vtu")
+        export_vtk(u, dh, grid, cv_post, mp, ip, final_dir, final_name; density=x)
+    end
+    final_vtu = WRITE_OUTPUT_FILES ? final_vtu_path : nothing
 
     println("\n" * "="^80)
     println("║" * " "^23 * "TOPOLOGY OPTIMIZATION COMPLETE" * " "^23 * "║")
@@ -314,13 +320,14 @@ function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, mate
     println("  • Density bin counts: $(counts)")
     println("  • Density bin proportions: $(proportions)")
     println("  • Poor design flag: $(final_density_log.poor_design)")
-    println("  • Output file: $(final_vtu_path)")
+    output_info = WRITE_OUTPUT_FILES ? final_vtu_path : "N/A (files disabled)"
+    println("  • Output file: $(output_info)")
     if err_msg !== nothing
         println("  • Error: $(err_msg)")
     end
     println("="^80)
 
-    log_path = write_run_log(run_dir;
+    log_path = WRITE_OUTPUT_FILES ? write_run_log(run_dir;
         status=status,
         shear_stats=shear_stats,
         resample_attempts=resample_attempts,
@@ -334,7 +341,7 @@ function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, mate
         enforce_guard=LOG_ENFORCE_SHEAR_VARIATION,
         abort_on_guard=LOG_ABORT_ON_SHEAR_FAILURE,
         vtu_file=final_vtu,
-        error=err_msg)
+        error=err_msg) : nothing
 
     return (run_index=run_i,
         status=status,
@@ -346,7 +353,7 @@ function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, mate
         shear_stats=shear_stats,
         resample_attempts=resample_attempts,
         material_seed=material_seed,
-        output_dir=final_dir,
+    output_dir=final_dir,
         vtu_file=final_vtu,
         log_file=log_path)
 end
@@ -374,9 +381,11 @@ function multiple_runs(nruns=3)
             push!(run_logs, log_entry)
         else
             println("RUN  - $(i) | shear cov μ_l=$(round(shear_stats.μ_l.cov, digits=4)), μ_t=$(round(shear_stats.μ_t.cov, digits=4)); attempts=$(attempts) -> aborted (threshold $(LOG_SHEAR_COV_THRESHOLD))")
-            run_dir = joinpath(save_path, "run_$(i)")
-            final_dir = joinpath(run_dir, "final")
-            mkpath(final_dir)
+            run_dir = WRITE_OUTPUT_FILES ? joinpath(save_path, "run_$(i)") : ""
+            final_dir = WRITE_OUTPUT_FILES ? joinpath(run_dir, "final") : ""
+            if WRITE_OUTPUT_FILES
+                mkpath(final_dir)
+            end
 
             x0 = ones(num_cells)
             density_history = Vector{DensityLogEntry}()
@@ -385,7 +394,7 @@ function multiple_runs(nruns=3)
             final_volume = sum(x0) / num_cells
             err_msg = "Shear COV threshold not met after $(attempts) attempts (μ_l cov=$(round(shear_stats.μ_l.cov, digits=4)), μ_t cov=$(round(shear_stats.μ_t.cov, digits=4)))"
 
-            log_path = write_run_log(run_dir;
+            log_path = WRITE_OUTPUT_FILES ? write_run_log(run_dir;
                 status=:invalid_material,
                 shear_stats=shear_stats,
                 resample_attempts=attempts,
@@ -399,7 +408,7 @@ function multiple_runs(nruns=3)
                 enforce_guard=LOG_ENFORCE_SHEAR_VARIATION,
                 abort_on_guard=LOG_ABORT_ON_SHEAR_FAILURE,
                 vtu_file=nothing,
-                error=err_msg)
+                error=err_msg) : nothing
 
             push!(run_logs, (run_index=i,
                 status=:invalid_material,
