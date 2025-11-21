@@ -2,6 +2,7 @@ using Random
 using Statistics
 using Dates
 using Printf
+using JLD2
 
 # Include the main driver file
 # This will load all dependencies and define the necessary functions and globals
@@ -20,8 +21,8 @@ const COMPLIANCE_WEIGHT = 1.0e-3
 # Create a specific output directory for this MCMC chain
 dt_str = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
 global save_path = joinpath(save_root, "mcmc_chain_$(dt_str)")
-mkpath(save_path)
-println("Output directory: $save_path")
+chain_file = joinpath(save_root, "mcmc_chain_$(dt_str).jld2")
+println("Output file: $chain_file")
 
 # --- Helper Functions ---
 
@@ -102,6 +103,14 @@ println("Initial Score: $(round(current_score, digits=4)) (Status: $(current_log
 chain_scores = Float64[]
 push!(chain_scores, current_score)
 accepted_count = 0
+chain_records = Vector{Dict{Symbol,Any}}()
+push!(chain_records, Dict(
+    :iteration => 1,
+    :accepted => true,
+    :score => current_score,
+    :acceptance_prob => 1.0,
+    :coeffs => deepcopy(current_coeffs),
+    :log_entry => current_log))
 
 # --- MCMC Loop ---
 
@@ -134,7 +143,8 @@ for i in 2:N_CHAIN
     println("  Score Diff:     $(round(score_diff, digits=4))")
     println("  Acceptance Prob: $(round(acceptance_prob, digits=4))")
 
-    if rand() < acceptance_prob
+    accepted = rand() < acceptance_prob
+    if accepted
         println("  -> ACCEPTED")
         global current_coeffs = proposal_coeffs
         global current_score = proposal_score
@@ -146,6 +156,13 @@ for i in 2:N_CHAIN
     end
 
     push!(chain_scores, current_score)
+    push!(chain_records, Dict(
+        :iteration => i,
+        :accepted => accepted,
+        :score => current_score,
+        :acceptance_prob => acceptance_prob,
+        :coeffs => deepcopy(current_coeffs),
+        :log_entry => current_log))
 end
 
 # --- Summary ---
@@ -157,4 +174,5 @@ println("Accepted Samples: $accepted_count")
 println("Acceptance Rate:  $(round(accepted_count / (N_CHAIN-1), digits=2))")
 println("Final Score:      $(round(current_score, digits=4))")
 println("Chain Scores:     $chain_scores")
-println("Results saved to: $save_path")
+@save chain_file chain_records chain_scores accepted_count PROPOSAL_SIGMA BETA N_CHAIN DENSITY_WEIGHT COMPLIANCE_WEIGHT
+println("Results saved to file: $chain_file")
