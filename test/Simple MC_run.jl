@@ -12,6 +12,7 @@ include(joinpath(@__DIR__, "..", "src", "COPY_stochastic_modified_v2_MC.jl"))
 
 # --- MCMC Configuration ---
 const N_CHAIN = 20          # Number of MCMC iterations
+const BURN_IN = Int(floor(0.3 * N_CHAIN))  # Burn-in iterations discarded from analysis
 const N_MODES = 80          # Number of KL modes (must match what's used in run_single_design/KL_realization)
 const PROPOSAL_SIGMA = 0.5 # Step size for random walk proposal
 const BETA = 50.0           # Inverse temperature. Higher = stronger preference for "bad" designs.
@@ -110,7 +111,8 @@ push!(chain_records, Dict(
     :score => current_score,
     :acceptance_prob => 1.0,
     :coeffs => deepcopy(current_coeffs),
-    :log_entry => current_log))
+    :log_entry => current_log,
+    :is_burnin => 1 <= BURN_IN))
 
 # --- MCMC Loop ---
 
@@ -162,7 +164,8 @@ for i in 2:N_CHAIN
         :score => current_score,
         :acceptance_prob => acceptance_prob,
         :coeffs => deepcopy(current_coeffs),
-        :log_entry => current_log))
+        :log_entry => current_log,
+        :is_burnin => i <= BURN_IN))
 end
 
 # --- Summary ---
@@ -170,9 +173,12 @@ println("\n" * "="^50)
 println("MCMC Summary")
 println("="^50)
 println("Total Iterations: $N_CHAIN")
+println("Burn-in: $BURN_IN")
 println("Accepted Samples: $accepted_count")
 println("Acceptance Rate:  $(round(accepted_count / (N_CHAIN-1), digits=2))")
 println("Final Score:      $(round(current_score, digits=4))")
+post_burnin_scores = BURN_IN < length(chain_scores) ? chain_scores[BURN_IN+1:end] : Float64[]
 println("Chain Scores:     $chain_scores")
-@save chain_file chain_records chain_scores accepted_count PROPOSAL_SIGMA BETA N_CHAIN DENSITY_WEIGHT COMPLIANCE_WEIGHT
+println("Post Burn-in Scores: $post_burnin_scores")
+@save chain_file chain_records chain_scores post_burnin_scores accepted_count PROPOSAL_SIGMA BETA N_CHAIN BURN_IN DENSITY_WEIGHT COMPLIANCE_WEIGHT
 println("Results saved to file: $chain_file")
