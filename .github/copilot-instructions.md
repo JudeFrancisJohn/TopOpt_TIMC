@@ -1,35 +1,48 @@
 Project: TopOpt (Julia)
 
 Quick goal
-- This workspace contains a small topology-optimization + stochastic material-parameter FE project written in Julia (Ferrite.jl + custom utilities). Primary scripts live in `src/` and helpers in `utils/`.
+- This workspace contains a small topology-optimization + stochastic material-parameter FE project written in Julia (Ferrite.jl + custom utilities). Primary scripts live in `src/` and `test/`, with helpers in `utils/`.
 
 Big picture (what matters to an AI contributor)
-- `src/COPY_stochastic_modified_v2_MC.jl` is the main driver for stochastic runs + topology optimization. It composes together input, FEA, KL-based random field generation, and OC-based design updates. Additionally, it includes an option for multiple runs.
+- **`test/MC_run_v2.jl`** is the **main MCMC driver** for exploring material parameter spaces that lead to poor topology-optimized designs. It uses pre-computed KL eigenmodes for efficient sampling.
+- `src/COPY_stochastic_modified_v2_MC.jl` is the base driver for stochastic runs + topology optimization. It composes together input, FEA, KL-based random field generation, and OC-based design updates. Additionally, it includes an option for multiple independent Monte Carlo runs.
+- `utils/stochastic_utils.jl` provides KL expansion utilities with a **refactored three-function architecture**:
+  - `compute_KL_eigenmodes()`: Pre-compute eigenmodes ONCE (deterministic)
+  - `sample_KL_field()`: Generate realizations from eigenmodes + coefficients (efficient)
+  - `KL_realization()`: Legacy wrapper (less efficient, for backward compatibility)
 - `utils/FE_updated_stoch.jl` contains the finite-element material routines, stress/tangent calculations for transverse isotropy, VTK export helpers, and a MaterialField type used by per-element material sampling.
-- `utils/stochastic_utils.jl` provides KL expansion utilities: covariance builder, KL_realization (modes, eigen solvers), and helpers to build per-element material fields.
 - `utils/opt.jl` implements the OC update (`OC`) and sensitivity filter (`check`) used by the topology loop.
-- `utils/input.jl` holds default problem parameters (geometry, material means, optimization hyperparameters).
+- `utils/mcmc_utils.jl` contains MCMC helper functions like `get_compliance()` and `evaluate_badness()`.
 
 Key types & functions to know (names you will use frequently)
 - MaterialParams (in `utils/FE_updated_stoch.jl`): holds scalar mean material properties (λ, μ_l, μ_t, alpha, beta, angle).
 - MaterialField (mutable struct): holds per-element or per-node sampled fields (μ_l, μ_t, α, β, λ, angle).
-- KL_realization(material_params, coords_elem; ...) (in `utils/stochastic_utils.jl`): generate a Dict of sampled fields per symbol (e.g. :μ_l, :μ_t, :α, :β) using KL expansion. Important kwargs: `use_centroids`, `make_sparse`, `Lc`, `N_modes`, `mode` (:additive or :lognormal).
+- **KL_Eigenmodes (struct)**: Holds pre-computed eigenvalues and eigenvectors for a material property. Used by MCMC for efficiency.
+- **compute_KL_eigenmodes(mp, coords_elem, prop_sym, sigma; ...)**: Solve KL eigenvalue problem ONCE for a given property. Returns KL_Eigenmodes struct.
+- **sample_KL_field(kl_modes, coeffs; ...)**: Generate a material field realization from pre-computed eigenmodes and coefficient vector. Efficient for MCMC.
+- **KL_realization(material_params, coords_elem; ...)**: Legacy function that generates a Dict of sampled fields per symbol (e.g. :μ_l, :μ_t, :α, :β). Important kwargs: `use_centroids`, `make_sparse`, `Lc`, `N_modes`, `mode` (:additive or :lognormal), `seed`, `provided_coeffs`.
 - build_material_field(fields; use_centroids=false, eltype_out=Float32): converts KL output to MaterialField.
 - build_KEStore!(dh, mf, nnodes_loc, avg_mp_store): computes per-element stiffness matrices (`KE_store`) using per-element averaged MaterialParams — used to accelerate FE solves inside topopt.
-- FE_Run!(ℂ, x_fe) (in `src/COPY_stochastic_modified_v2 copy 2.jl`): run a staged load-stepping nonlinear solve (calls `NonlinearSolve` which uses `assemble_global!`).
+- FE_Run!(ℂ, x_fe): run a staged load-stepping nonlinear solve (calls `NonlinearSolve` which uses `assemble_global!`).
 - OC(x, volfrac, dc) and check(nelx,nely,rmin,x,dc) for design updates and filtering.
+- **run_with_kl_coeffs(run_i, coeffs_dict, kl_modes_dict)**: Run TopOpt with material fields generated from KL coefficients using pre-computed eigenmodes (used by MCMC).
+- **evaluate_badness(log_entry)**: Compute badness metric for MCMC (higher = more intermediary densities).
 
 Project-specific conventions & gotchas
+- **KL Expansion Architecture**: The implementation separates deterministic (eigenmodes) from stochastic (coefficients) parts. For MCMC, always pre-compute eigenmodes with `compute_KL_eigenmodes()` once, then use `sample_KL_field()` in the loop. Using `KL_realization()` in MCMC is inefficient.
+- **MCMC vs Monte Carlo**: MCMC (`test/MC_run_v2.jl`) explores coefficient space via Metropolis-Hastings to find bad-design-inducing materials. Monte Carlo (`multiple_runs()`) generates independent samples with different seeds.
 - SIMP is applied multiplicatively to stored element stiffness matrices (KE_store). The code precomputes KE_store using averaged material params and then scales by x^penal during assembly.
 - Material sampling: the code supports either per-node/per-element fields or centroid-only values; `use_centroids=true` yields nelem×1 arrays while `use_centroids=false` yields nelem×nloc arrays. Many routines expect averaged MaterialParams for each element (see `build_KEStore!`).
-- Kernel selection and eigen: KL_realization attempts dense eigen for small covariance matrices and Arpack for larger sparse cases. Expect fallback behavior if Arpack is not available or fails.
+- Kernel selection and eigen: KL eigenmode computation attempts dense eigen for small covariance matrices and Arpack for larger sparse cases. Expect fallback behavior if Arpack is not available or fails.
 - FE solver uses Ferrite.jl-specific patterns: DofHandler, ConstraintHandler, start_assemble/assemble!, apply_zero!, create_sparsity_pattern. Be careful when modifying DOF ordering or boundary set names (e.g. "left_edge", "topmid_face").
-- VTK exports: `WriteVTK` helpers are used in `exportresults` and custom `vtk_grid(...)` usage. File names are created under `./output/<script_name>/stochastic/run`.
+- VTK exports: `WriteVTK` helpers are used in `exportresults` and custom `vtk_grid(...)` usage. File names are created under `./output/<script_name>/stochastic/run` or `./output/mcmc_chain_*/`.
 
 Common workflows (how to run / debug locally)
-- Run a quick FEA verification (no topopt) by launching `src/COPY_stochastic_modified_v2 copy 2.jl` in the Julia REPL or using `julia --project=. src/COPY_stochastic_modified_v2 copy 2.jl` from workspace root. The script prints an FEA verification message early on.
-- Typical iterative TopOpt run: the main while-loop in `src/COPY_stochastic_modified_v2 copy 2.jl` performs FE_Run!, computes compliance/sensitivities, applies filter (`check`), updates with `OC`, and writes VTK files. Look at `save_path` near the top of that file for output location.
-- If eigen/Arpack issues arise during KL sampling, reduce `N_modes`, set `make_sparse=true`, or force dense eigen by setting `make_sparse=false` and ensuring memory fits.
+- **Run MCMC to find bad designs**: Execute `julia --project=. test/MC_run_v2.jl` from workspace root. This pre-computes KL eigenmodes, then runs Metropolis-Hastings to explore material parameter spaces. Results saved to `output/mcmc_chain_YYYYMMDD_HHMMSS.jld2`.
+- **Run Monte Carlo samples**: Use `multiple_runs(N)` from `src/COPY_stochastic_modified_v2_MC.jl` for independent stochastic samples with different seeds.
+- Run a quick FEA verification (no topopt) by launching `src/COPY_stochastic_modified_v2 copy 2.jl` in the Julia REPL. The script prints an FEA verification message early on.
+- Typical iterative TopOpt run: the main while-loop performs FE_Run!, computes compliance/sensitivities, applies filter (`check`), updates with `OC`, and writes VTK files. Look at `save_path` near the top of driver files for output location.
+- If eigen/Arpack issues arise during KL eigenmode computation, reduce `N_modes`, set `make_sparse=true`, or force dense eigen by setting `make_sparse=false` and ensuring memory fits.
 
 ### Enhancements for AI Coding Agents
 

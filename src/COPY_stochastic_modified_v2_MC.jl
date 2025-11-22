@@ -202,10 +202,10 @@ function sample_material_fields(run_index)
     for attempt in 1:max_attempts
         seed = MATERIAL_SEED_BASE + (run_index - 1) * max_attempts + attempt - 1
         candidate_fields = KL_realization(mp, coords_elem;
-            σs=Dict(:μ_l => 0.1 * mp.μ_l,
-                :μ_t => 0.1 * mp.μ_t,
-                :α => 0.1 * mp.alpha,
-                :β => 0.1 * mp.beta),
+            σs=Dict(:μ_l => 0.5,
+                :μ_t => 0.5,
+                :α => 0.5,
+                :β => 0.5),
             Lc=0.01, N_modes=80, use_centroids=false,
             make_sparse=true, kernel=:exponential, mode=:lognormal,
             seed=seed)
@@ -309,8 +309,8 @@ function topopt_run(run_i, shear_stats::ShearStats, resample_attempts::Int, mate
     println("  • Status: $(status)")
     println("  • Completed iterations: $loop")
     println("  • Final objective: $(round(last_compliance, digits=4))")
-    println("  • Final volume fraction: $(round(final_volume, digits=4))")
-    println("  • Final change: $(round(change, digits=6))")
+    #println("  • Final volume fraction: $(round(final_volume, digits=4))")
+    #println("  • Final change: $(round(change, digits=6))")
     println("  • μ_l stats: mean=$(round(shear_stats.μ_l.mean, digits=4)), std=$(round(shear_stats.μ_l.std, digits=4)), cov=$(round(shear_stats.μ_l.cov, digits=4))")
     println("  • μ_t stats: mean=$(round(shear_stats.μ_t.mean, digits=4)), std=$(round(shear_stats.μ_t.std, digits=4)), cov=$(round(shear_stats.μ_t.cov, digits=4))")
     seed_info = isnothing(material_seed) ? "N/A" : string(material_seed)
@@ -458,6 +458,4 @@ function run_single_design(run_i::Int, coeffs_dict::Dict{Symbol,Vector{Float64}}
     return log_entry
 end
 
-if abspath(PROGRAM_FILE) == @__FILE__
-    run_logs = multiple_runs(3)
-end
+#run_logs = multiple_runs(3)
