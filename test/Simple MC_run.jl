@@ -10,8 +10,12 @@ using JLD2
 println("Loading TopOpt driver...")
 include( "../src/COPY_stochastic_modified_v2_MC.jl")
 
+# Import the new diagnostic utilities
+include("../utils/diagnostic_utils.jl"))
+using .DiagnosticUtils
+
 # --- MCMC Configuration ---
-const N_CHAIN = 200          # Number of MCMC iterations
+const N_CHAIN = 20         # Number of MCMC iterations
 const BURN_IN = Int(floor(0.3 * N_CHAIN))  # Burn-in iterations discarded from analysis
 const N_MODES = 80          # Number of KL modes (must match what's used in run_single_design/KL_realization)
 const PROPOSAL_SIGMA = 0.5 # Step size for random walk proposal
@@ -114,6 +118,14 @@ push!(chain_records, Dict(
     :log_entry => current_log,
     :is_burnin => 1 <= BURN_IN))
 
+# Initialize diagnostics for tracked metrics
+params_to_monitor = [:badness, :acceptance_prob]
+initialize_diagnostics!(params_to_monitor)
+
+# Record diagnostics for the initial sample
+initial_params = Dict(:badness => current_score, :acceptance_prob => 1.0)
+monitor_diagnostics!(initial_params, 1.0, 1, plot_interval=10)
+
 # --- MCMC Loop ---
 
 for i in 2:N_CHAIN
@@ -156,6 +168,11 @@ for i in 2:N_CHAIN
         println("  -> REJECTED")
         # We stay at current_coeffs
     end
+
+    # Update diagnostics with current metrics
+    running_acceptance = accepted_count / (i - 1)
+    current_params = Dict(:badness => current_score, :acceptance_prob => acceptance_prob)
+    monitor_diagnostics!(current_params, running_acceptance, i, plot_interval=10)
 
     push!(chain_scores, current_score)
     push!(chain_records, Dict(
