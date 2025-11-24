@@ -11,7 +11,7 @@ println("Loading TopOpt driver...")
 include( "../src/COPY_stochastic_modified_v2_MC.jl")
 
 # --- MCMC Configuration ---
-const N_CHAIN = 20          # Number of MCMC iterations
+const N_CHAIN = 200          # Number of MCMC iterations
 const BURN_IN = Int(floor(0.3 * N_CHAIN))  # Burn-in iterations discarded from analysis
 const N_MODES = 80          # Number of KL modes (must match what's used in run_single_design/KL_realization)
 const PROPOSAL_SIGMA = 0.5 # Step size for random walk proposal
