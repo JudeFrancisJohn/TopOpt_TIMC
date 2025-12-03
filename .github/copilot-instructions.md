@@ -39,8 +39,9 @@ Project-specific conventions & gotchas
 
 Common workflows (how to run / debug locally)
 - **Run MCMC to find bad designs**: Execute `julia --project=. test/MC_run_v2.jl` from workspace root. This pre-computes KL eigenmodes, then runs Metropolis-Hastings to explore material parameter spaces. Results saved to `output/mcmc_chain_YYYYMMDD_HHMMSS.jld2`.
+- **Run adversarial optimization**: Execute `julia --project=. test/proxy.jl` to find KL coefficients that maximize intermediate densities. Results saved to `output/adversarial_YYYYMMDD_HHMMSS/`.
 - **Run Monte Carlo samples**: Use `multiple_runs(N)` from `src/COPY_stochastic_modified_v2_MC.jl` for independent stochastic samples with different seeds.
-- Run a quick FEA verification (no topopt) by launching `src/COPY_stochastic_modified_v2 copy 2.jl` in the Julia REPL. The script prints an FEA verification message early on.
+- **Run main stochastic TopOpt**: Launch `src/COPY_stochastic_modified_v2 copy 2_proxy.jl` in the Julia REPL. The script prints an FEA verification message early on and runs topology optimization with stochastic material parameters.
 - Typical iterative TopOpt run: the main while-loop performs FE_Run!, computes compliance/sensitivities, applies filter (`check`), updates with `OC`, and writes VTK files. Look at `save_path` near the top of driver files for output location.
 - If eigen/Arpack issues arise during KL eigenmode computation, reduce `N_modes`, set `make_sparse=true`, or force dense eigen by setting `make_sparse=false` and ensuring memory fits.
 
@@ -48,8 +49,9 @@ Common workflows (how to run / debug locally)
 
 #### Debugging Workflows
 - **VTK File Inspection**: Use ParaView to open `.vtu` files in the `output/` directory. Check displacement and stress fields for anomalies.
-- **FEA Verification**: Run `src/COPY_stochastic_modified_v2 copy 2.jl` and confirm the "FEA verification" message appears early in the output.
+- **FEA Verification**: Run `src/COPY_stochastic_modified_v2 copy 2_proxy.jl` and confirm the "FEA verification" message appears early in the output.
 - **KL Sampling Issues**: If eigen/Arpack errors occur, adjust `N_modes` or `make_sparse` in `KL_realization` calls.
+- **Adversarial Optimization Testing**: Run `test/test_adversarial_setup.jl` to verify eigenmode computation, field generation, and objective evaluation without running full optimization.
 
 #### Integration Points and External Dependencies
 - **Ferrite.jl**: Central to the FE solver. Key patterns include `DofHandler`, `ConstraintHandler`, and `assemble!`.
@@ -80,7 +82,10 @@ Common workflows (how to run / debug locally)
 When changing input parameters, ensure consistency across these files to avoid mismatches during execution.
 
 #### Main Driver Script
-- Always confirm with the user which script is the main driver. While `src/COPY_stochastic_modified_v2 copy 2.jl` is currently the main driver for stochastic runs and topology optimization, there may be other versions or copies actively being used. Ensure any changes or debugging are applied to the correct version of the driver script.
+- **`src/COPY_stochastic_modified_v2 copy 2_proxy.jl`** is the current main driver for stochastic runs and topology optimization with adversarial optimization support. This is the primary script to use for running TopOpt with spatially stochastic material parameters.
+- `src/COPY_stochastic_modified_v2 copy 2.jl` is the previous main driver (without adversarial support).
+- `src/COPY_stochastic_modified_v2_MC.jl` is the base driver used by MCMC and adversarial optimization scripts.
+- Always ensure any changes or debugging are applied to the correct version of the driver script based on the task at hand.
 
 
 

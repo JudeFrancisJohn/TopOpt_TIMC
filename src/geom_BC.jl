@@ -59,7 +59,7 @@ dbcrv = Dirichlet(:u, ∂Ωr, (x,t) -> 0.2*t, 2); # Vertical Displacement
 add!(ch, dbcrv);"""
 
 close!(ch);
-update!(ch, 0.0);
+Ferrite.update!(ch, 0.0);  # Explicitly use Ferrite's update! to avoid ambiguity
 
 #ΓN = getfaceset(grid, "right_face"); # Neumann Boundary
 #--------------------------------------------------------------------#

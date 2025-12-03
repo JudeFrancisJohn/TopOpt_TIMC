@@ -71,6 +71,18 @@ end
 end
 
 function build_KEStore!(dh,mf,nnodes_loc,avg_mp_store)
+    # Allocate local buffers to avoid using stale global variables
+    n_dofs = ndofs_per_cell(dh)
+    ke_local = zeros(n_dofs, n_dofs)
+    ge_local = zeros(n_dofs)
+    u_local = zeros(n_dofs)
+    
+    println("    [DEBUG STEP 3] Building KE_store from material field...")
+    println("      Processing $(length(CellIterator(dh))) elements...")
+    
+    # Track first few elements for debugging
+    first_elem_params = []
+    
     for (cell_index, cell) in enumerate(CellIterator(dh))
 
         μ_l_sum = 0.0; μ_t_sum = 0.0; α_sum = 0.0; β_sum = 0.0; λ_sum = 0.0; ang_sum = 0.0
@@ -94,15 +106,29 @@ function build_KEStore!(dh,mf,nnodes_loc,avg_mp_store)
 
         avg_mp = MaterialParams(λ_avg, μ_l_avg, μ_t_avg, α_avg, β_avg, ang_avg)
         avg_mp_store[cell_index] = avg_mp
+        
+        # Store first element params for debugging
+        if cell_index <= 3
+            push!(first_elem_params, (cell_index, μ_l_avg, μ_t_avg))
+        end
 
         C = zeros(3,3)
         tangent_transiso!(C, avg_mp)    
         ℂ_store[cell_index] = C
-        fill!(ke, 0.0)
-        fill!(ge, 0.0)
+        fill!(ke_local, 0.0)
+        fill!(ge_local, 0.0)
         # use per-element averaged material params when computing element stiffness
-        KE_store[cell_index] = element_routine!(ke, ge, cell, dh, cv, fv, avg_mp, zeros(n), ℂ_store[cell_index], 0.0)
+        KE_store[cell_index] = element_routine!(ke_local, ge_local, cell, dh, cv, fv, avg_mp, u_local, ℂ_store[cell_index], 0.0)
     end
+    
+    # Print first few element parameters to verify they changed
+    println("      First 3 elements averaged material params:")
+    for (idx, μl, μt) in first_elem_params
+        println("        Elem $idx: μ_l=$(round(μl, digits=3)), μ_t=$(round(μt, digits=3))")
+    end
+    println("      KE_store[1] sum after build: $(round(sum(abs.(KE_store[1])), digits=3))")
+    println("      KE_store[2] sum after build: $(round(sum(abs.(KE_store[2])), digits=3))")
+    println("      KE_store[3] sum after build: $(round(sum(abs.(KE_store[3])), digits=3))")
 end
 
 @with_kw struct NeumannpointBoundaryinfo
@@ -314,7 +340,7 @@ function NonlinearSolve(dh, cv, fv, ch, mp, u_d, ℂ,x, λf)
     u = zeros(_ndofs);
     Δu = zeros(_ndofs);
     ΔΔu = zeros(_ndofs);
-    apply!(u_d, ch);
+    Ferrite.apply!(u_d, ch);
     # Create sparse matrix and residual vector
     K = create_sparsity_pattern(dh); #Create the sparsity pattern corresponding to the degree of freedom numbering in the DofHandler. Return a SparseMatrixCSC with stored values in the correct places.
     g = zeros(_ndofs);
@@ -553,7 +579,7 @@ function FE_Run!(ℂ, x_fe)
     
     for i=1:nsteps
         local_t += Δt;
-        update!(ch, local_t);
+        Ferrite.update!(ch, local_t);  # Explicitly use Ferrite's update! to avoid ambiguity
         λf = i/nsteps
         u_local = NonlinearSolve(dh, cv, fv, ch, mp, u_local, ℂ, x_fe, λf);
         #exportresults(u_local, dh, grid, cv_post, mp, ip, save_path, i);      
