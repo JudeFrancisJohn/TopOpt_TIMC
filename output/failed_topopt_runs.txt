@@ -1,7 +1,0 @@
-
-================================================================================
-Failed TopOpt Run - 2025-12-03T13:00:59.923
-================================================================================
-Error: DomainError(-2.211238328897361e-9, "sqrt was called with a negative real argument but will only return a complex result if called with a complex argument. Try sqrt(Complex(x)).")
-
-KL Coefficients:
