@@ -159,7 +159,8 @@ Tracks best result including density field.
 function log_iteration(opt::AdversarialOptimizer, iteration::Int, 
                       badness::Float64, compliance::Float64,
                       frac::Float64, severity::Float64, gray::Float64,
-                      coeffs_mat::Matrix{Float64}, X::Vector{Float64})
+                      coeffs_mat::Matrix{Float64}, X::Vector{Float64};
+                      best_so_far::Float64=badness)
     
     # Add to history (METRICS ONLY - no coefficient bloat)
     push!(opt.history["iteration"], iteration)
@@ -187,14 +188,15 @@ function log_iteration(opt::AdversarialOptimizer, iteration::Int,
             println(io, "# Max iterations: $(opt.max_iterations)")
             println(io, "# Population size: $(opt.population_size)")
             println(io, "# Number of parameters: $(sum(values(opt.n_modes)))")
+            println(io, "# NOTE: 'Badness' shows current evaluation, 'Best' shows best-so-far (monotonic)")
             println(io, "#" ^ 100)
-            @printf(io, "%-8s %-12s %-12s %-12s %-12s %-12s\n",
-                   "Iter", "Badness", "Compliance", "Frac", "Severity", "Gray")
+            @printf(io, "%-8s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+                   "Iter", "Badness", "Best", "Compliance", "Frac", "Severity", "Gray")
             println(io, "-" ^ 100)
         end
         
-        @printf(io, "%-8d %-12.6f %-12.6e %-12.6f %-12.6f %-12.6f\n",
-               iteration, badness, compliance, frac, severity, gray)
+        @printf(io, "%-8d %-12.6f %-12.6f %-12.6e %-12.6f %-12.6f %-12.6f\n",
+               iteration, badness, best_so_far, compliance, frac, severity, gray)
         flush(io)
     end
 end
