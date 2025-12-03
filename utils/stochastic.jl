@@ -75,7 +75,7 @@ dbcrv = Dirichlet(:u, ∂Ωr, (x,t) -> 0.2*t, 2); # Vertical Displacement
 add!(ch, dbcrv);"""
 
 close!(ch);
-update!(ch, 0.0);
+Ferrite.update!(ch, 0.0);  # Explicitly use Ferrite's update! to avoid ambiguity
 
 
 # dof vector
@@ -424,7 +424,7 @@ function FE_Run!(ℂ, x_fe)
     
     for i=1:nsteps
         local_t += Δt;
-        update!(ch, local_t);
+        Ferrite.update!(ch, local_t);  # Explicitly use Ferrite's update! to avoid ambiguity
         λf = i/nsteps
         # u .= Solve(dh, cv, fv, ch, mp, uₙ);
         u_local = NonlinearSolve(dh, cv, fv, ch, mp, u_local, ℂ, x_fe, λf);
@@ -696,7 +696,7 @@ println("  • Final volume fraction: $(round(sum(x)/num_cells, digits=4))")
 println("  • Final change: $(round(change, digits=6))")
 println("="^80)
 
-        
+
 
 
 

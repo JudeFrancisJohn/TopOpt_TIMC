@@ -177,29 +177,17 @@ function compute_KL_eigenmodes(material_params::MaterialParams,
     eigenvecs = nothing
 
     # Solve eigenvalue problem (DETERMINISTIC - only depends on covariance structure)
-    if n_dofs <= 2000 && !issparse(cov_matrix)
-        denseC = Matrix{Float64}(cov_matrix)
-        ev = eigen(Symmetric(denseC))
-        idx_desc = sortperm(ev.values, rev=true)[1:n_requested]
-        eigenvals = ev.values[idx_desc]
-        eigenvecs = ev.vectors[:, idx_desc]
-    else
-        try
-            @eval begin
-                using Arpack
-            end
-            arpack_vals, arpack_vecs = Arpack.eigs(cov_matrix; nev=arpack_nev, which=:LM)
-            eigenvals = real(arpack_vals)
-            eigenvecs = real(arpack_vecs)
-        catch err
-            @warn "ARPACK eigs failed, falling back to dense eigen: $err"
-            denseC = Matrix{Float64}(cov_matrix)
-            ev = eigen(Symmetric(denseC))
-            idx_desc = sortperm(ev.values, rev=true)[1:n_requested]
-            eigenvals = ev.values[idx_desc]
-            eigenvecs = ev.vectors[:, idx_desc]
-        end
-    end
+    # Strategy: Use dense eigen for reliability
+    denseC = issparse(cov_matrix) ? Matrix{Float64}(cov_matrix) : Matrix{Float64}(cov_matrix)
+    
+    # Add small regularization for numerical stability
+    n_dofs_cov = size(denseC, 1)
+    denseC = denseC + 1e-10 * Matrix{Float64}(LinearAlgebra.I, n_dofs_cov, n_dofs_cov)
+    
+    ev = eigen(Symmetric(denseC))
+    idx_desc = sortperm(ev.values, rev=true)[1:n_requested]
+    eigenvals = ev.values[idx_desc]
+    eigenvecs = ev.vectors[:, idx_desc]
 
     # Truncate to final number of modes
     n_available = length(eigenvals)
@@ -213,6 +201,8 @@ function compute_KL_eigenmodes(material_params::MaterialParams,
     return KL_Eigenmodes(prop_sym, mean_value, eigenvals, eigenvecs, 
                         n_elem, n_loc, use_centroids, mode)
 end
+
+
 
 """
     sample_KL_field(kl_modes, coeffs; eltype_out)
