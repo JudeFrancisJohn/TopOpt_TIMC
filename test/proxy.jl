@@ -218,11 +218,59 @@ function evaluate_objective(coeffs_mat::Matrix{Float64})
         println("  [DEBUG] Could not check KE_store: $e")
     end
     
-    # Run topology optimization
+    # Run topology optimization with error handling
     global u = zeros(ndofs(dh))
     println("  [DEBUG] Starting topology optimization...")
-    X, c = topopt_run(1)  # Run with ID=1
-    println("  [DEBUG] TopOpt converged: c=$c, vol_frac=$(mean(X))")
+    
+    local X, c
+    try
+        X, c = topopt_run(1)  # Run with ID=1
+        println("  [DEBUG] TopOpt converged: c=$c, vol_frac=$(mean(X))")
+    catch e
+        # Handle domain errors gracefully - save diagnostic data
+        if isa(e, DomainError)
+            println("\n⚠️  DomainError encountered during topology optimization!")
+            println("   Error: $e")
+            
+            # Save failure diagnostics
+            failure_file = joinpath(OUTPUT_ROOT,"failed_topopt_runs.txt")
+            open(failure_file, "a") do io
+                println(io, "\n" * "="^80)
+                println(io, "Failed TopOpt Run - $(Dates.now())")
+                println(io, "="^80)
+                println(io, "Error: $e")
+                println(io, "\nKL Coefficients:")
+                for (prop, coeffs) in kl_coeffs_dict
+                    println(io, "  $prop: $(coeffs)")
+                end
+                println(io, "\nMaterial Field Statistics:")
+                println(io, "  μ_l: mean=$(mean(mf.μ_l)), std=$(std(mf.μ_l)), min=$(minimum(mf.μ_l)), max=$(maximum(mf.μ_l))")
+                println(io, "  μ_t: mean=$(mean(mf.μ_t)), std=$(std(mf.μ_t)), min=$(minimum(mf.μ_t)), max=$(maximum(mf.μ_t))")
+                println(io, "  α: mean=$(mean(mf.α)), std=$(std(mf.α)), min=$(minimum(mf.α)), max=$(maximum(mf.α))")
+                println(io, "  β: mean=$(mean(mf.β)), std=$(std(mf.β)), min=$(minimum(mf.β)), max=$(maximum(mf.β))")
+                if isdefined(Main, :x)
+                    println(io, "\nDensity Field x:")
+                    println(io, "  mean=$(mean(x)), std=$(std(x)), min=$(minimum(x)), max=$(maximum(x))")
+                    println(io, "  First 20 elements: $(x[1:min(20, length(x))])")
+                else
+                    println(io, "\nDensity Field x: Not yet initialized")
+                end
+                println(io, "\nStacktrace:")
+                println(io, sprint(showerror, e, catch_backtrace()))
+                println(io, "="^80)
+            end
+            
+            println("   → Diagnostics saved to: $failure_file")
+            println("   → Assigning penalty values and continuing...")
+            
+            # Return penalty values to discourage this parameter region
+            # Use very high badness penalty but keep compliance penalty moderate
+            return -1000.0, 1e6, zeros(nelx * nely), diagnostics
+        else
+            # Re-throw non-domain errors
+            rethrow(e)
+        end
+    end
     
     # Compute adversarial metrics
     frac = compute_intermediary_fraction(X)
@@ -230,10 +278,16 @@ function evaluate_objective(coeffs_mat::Matrix{Float64})
     gray = compute_gray_indicator(X)
     
     # Combined badness metric (higher = more intermediate densities)
-    badness = compute_combined_badness(X, c; 
-                                      w_frac=0.4, 
-                                      w_sev=0.4, 
-                                      w_gray=0.2)
+    # Uses adaptive compliance reference for stability (provided by caller if available)
+    badness = compute_combined_badness(
+        X, c; 
+        w_frac=0.4, 
+        w_sev=0.4, 
+        w_gray=0.2,
+        compliance_ref=get(diagnostics, "compliance_ref", c),  # Use adaptive ref if available
+        compliance_penalty_threshold=10.0,
+        stability_weight=0.15
+    )
     
     diagnostics["intermediate_frac"] = frac
     diagnostics["severity"] = severity
@@ -321,8 +375,12 @@ function run_adversarial_optimization(; max_iterations=100, population_size=0)
     println("\nStarting CMA-ES optimization...")
     println("="^80)
     
-    # Track evaluations for logging
+    # Track evaluations for logging AND compliance statistics
     eval_counter = [0]
+    compliance_history = Float64[]  # Track compliance values for adaptive reference
+    best_badness_so_far = Ref(-Inf)  # Track best badness found
+    best_coeffs_so_far = nothing  # Track coefficients of best solution
+    best_X_so_far = nothing  # Track density field of best solution
     
     # Define objective wrapper INSIDE the function (needs access to local variables)
     function objective_wrapper_logged(x::Vector{Float64})
@@ -335,16 +393,49 @@ function run_adversarial_optimization(; max_iterations=100, population_size=0)
         # Evaluate (returns badness to MAXIMIZE)
         badness, compliance, X, diagnostics = evaluate_objective(coeffs_mat)
         
-        # Log this evaluation
+        # Update compliance history for adaptive reference
+        push!(compliance_history, compliance)
+        
+        # Compute adaptive compliance reference (median of observed values)
+        # This makes the penalty robust to the actual compliance scale
+        compliance_ref = if length(compliance_history) >= 10
+            median(compliance_history)
+        else
+            compliance  # Use current value for first few iterations
+        end
+        
+        # Recompute badness with adaptive compliance reference
+        # This ensures stability penalty adapts to actual compliance range
         frac = diagnostics["intermediate_frac"]
         severity = diagnostics["severity"]
         gray = diagnostics["gray"]
         
-        log_iteration(opt, iter, badness, compliance, frac, severity, gray, coeffs_mat, X)
+        badness_adjusted = compute_combined_badness(
+            X, compliance;
+            w_frac=0.4,
+            w_sev=0.4, 
+            w_gray=0.2,
+            compliance_ref=compliance_ref,
+            compliance_penalty_threshold=10.0,  # Penalize if >10x median
+            stability_weight=0.15  # Moderate penalty to maintain feasibility
+        )
+        
+        # Update best-so-far tracking
+        if badness_adjusted > best_badness_so_far[]
+            best_badness_so_far[] = badness_adjusted
+            best_coeffs_so_far = copy(coeffs_mat)
+            best_X_so_far = copy(X)
+            println("  🎯 NEW BEST! Badness=$(round(badness_adjusted, digits=6)) at iteration $iter")
+        end
+        
+        # Log this evaluation (use adjusted badness, include best-so-far)
+        log_iteration(opt, iter, badness_adjusted, compliance, frac, severity, gray, coeffs_mat, X;
+                     best_so_far=best_badness_so_far[])
         
         # Print summary every 10 evaluations
         if iter % 10 == 0 || iter == 1
-            print_optimization_summary(iter, badness, compliance, frac, severity, gray)
+            print_optimization_summary(iter, badness_adjusted, compliance, frac, severity, gray)
+            println("    Best so far: $(round(best_badness_so_far[], digits=6)) (improvement tracking)")
         end
         
         # Save checkpoint periodically
@@ -353,7 +444,7 @@ function run_adversarial_optimization(; max_iterations=100, population_size=0)
         end
         
         # Return NEGATIVE badness for minimization
-        return -badness
+        return -badness_adjusted
     end
     
     # Run CMA-ES optimization (NO CALLBACK - let optimizer run freely)

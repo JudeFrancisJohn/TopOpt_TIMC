@@ -153,7 +153,9 @@ Combined badness score (higher = more intermediate densities)
 """
 function compute_combined_badness(X::Vector{Float64}, compliance::Float64; 
                                   w_frac=0.4, w_sev=0.4, w_gray=0.2,
-                                  compliance_ref=1.0)
+                                  compliance_ref=1.0, 
+                                  compliance_penalty_threshold=100.0,
+                                  stability_weight=0.1)
     frac = compute_intermediary_fraction(X)
     severity = compute_intermediary_severity(X)
     gray = compute_gray_indicator(X)
@@ -161,7 +163,26 @@ function compute_combined_badness(X::Vector{Float64}, compliance::Float64;
     # Normalize severity to 0-1 (max severity is 0.5)
     severity_norm = severity / 0.5
     
-    badness = w_frac * frac + w_sev * severity_norm + w_gray * gray
+    # Base badness from intermediate densities
+    badness_raw = w_frac * frac + w_sev * severity_norm + w_gray * gray
+    
+    # Stability penalty: penalize extreme compliance that indicates numerical issues
+    # Use soft thresholding to avoid sharp discontinuities
+    compliance_ratio = compliance / compliance_ref
+    
+    if compliance_ratio > compliance_penalty_threshold
+        # Exponential penalty for very high compliance (approaching instability)
+        stability_penalty = stability_weight * (1.0 - exp(-(compliance_ratio - compliance_penalty_threshold) / 50.0))
+    elseif compliance_ratio < 1.0 / compliance_penalty_threshold
+        # Also penalize very low compliance (might indicate degenerate solutions)
+        stability_penalty = stability_weight * (1.0 - exp(-(1.0/compliance_ratio - compliance_penalty_threshold) / 50.0))
+    else
+        # No penalty in reasonable compliance range
+        stability_penalty = 0.0
+    end
+    
+    # Final badness: high is good, but penalized if approaching instability
+    badness = badness_raw - stability_penalty
     
     return badness
 end
