@@ -179,8 +179,14 @@ function evaluate_objective(coeffs_mat::Matrix{Float64})
         
         if has_negative_mu
             @warn "Generated material field with negative shear moduli - returning penalty" diagnostics
+            
+            # Populate missing keys to prevent KeyError in caller
+            diagnostics["intermediate_frac"] = 0.0
+            diagnostics["severity"] = 0.0
+            diagnostics["gray"] = 0.0
+            
             # Return penalty value but don't completely fail
-            return -1e3, Inf, zeros(Float64, N_ELEM), diagnostics
+            return -1e3, 1e9, zeros(Float64, N_ELEM), diagnostics
         else
             # Material is extreme but physically valid - proceed
             @info "Material field is extreme but valid" diagnostics
@@ -240,7 +246,7 @@ function evaluate_objective(coeffs_mat::Matrix{Float64})
                 println(io, "="^80)
                 println(io, "Error: $e")
                 println(io, "\nKL Coefficients:")
-                for (prop, coeffs) in kl_coeffs_dict
+                for (prop, coeffs) in coeffs_dict
                     println(io, "  $prop: $(coeffs)")
                 end
                 println(io, "\nMaterial Field Statistics:")
@@ -262,6 +268,11 @@ function evaluate_objective(coeffs_mat::Matrix{Float64})
             
             println("   → Diagnostics saved to: $failure_file")
             println("   → Assigning penalty values and continuing...")
+            
+            # Add dummy metrics to diagnostics to prevent KeyError downstream
+            diagnostics["intermediate_frac"] = 0.0
+            diagnostics["severity"] = 0.0
+            diagnostics["gray"] = 0.0
             
             # Return penalty values to discourage this parameter region
             # Use very high badness penalty but keep compliance penalty moderate
