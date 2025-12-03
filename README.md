@@ -42,7 +42,7 @@ src/
   └─ geom_BC.jl                         # Geometry and boundary conditions
 
 test/
-  ├─ MC_run_v2.jl                       # Main MCMC driver ⭐
+  ├─ MC_run_v2.jl                       # Main MCMC driver 
   └─ Simple MC_run.jl                   # Legacy (deprecated)
 
 utils/
@@ -58,7 +58,7 @@ input/
   └─ params_LOGS.jl                     # Logging parameters
 
 docs/
-  ├─ MCMC_and_KL_Guide.md              # Comprehensive usage guide ⭐
+  ├─ MCMC_and_KL_Guide.md              # Comprehensive usage guide 
   ├─ IMPLEMENTATION_UPDATE.md          # Recent changes summary
   └─ KL_seed_usage.md                  # Seed/reproducibility guide
 ```
@@ -164,7 +164,7 @@ rmin = 1.5               # Filter radius
 
 📖 **[MCMC and KL Guide](docs/MCMC_and_KL_Guide.md)** - Complete usage guide  
 📄 **[Implementation Update](docs/IMPLEMENTATION_UPDATE.md)** - Recent changes  
-🔧 **[Copilot Instructions](.github/copilot-instructions.md)** - Project conventions
+
 
 ## Dependencies
 
@@ -218,19 +218,8 @@ Edit `test/MC_run_v2.jl`:
 - Use `use_centroids=true` for smaller fields
 - Set `make_sparse=true`
 
-## Citation
 
-If you use this code, please cite:
-```
-[Your paper/thesis information here]
-```
-
-## License
-
-[Your license here]
-
----
 
 **Version**: 2.0  
 **Last Updated**: November 22, 2025  
-**Main Contact**: [Your contact info]
+
