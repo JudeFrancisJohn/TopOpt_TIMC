@@ -109,6 +109,11 @@ println("EIGENMODE COMPUTATION COMPLETE")
 println("="^80)
 println("Total parameters to optimize: $(sum(values(n_modes)))")
 
+# Save eigenmodes for later reconstruction
+eigenmode_file = joinpath(SAVE_PATH, "eigenmodes.jld2")
+println("\nSaving eigenmodes to: $eigenmode_file")
+jldsave(eigenmode_file; kl_modes=kl_modes_dict, n_modes=n_modes, σs=σs)
+
 # ============================================================================
 # OBJECTIVE FUNCTION EVALUATION
 # ============================================================================
