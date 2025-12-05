@@ -25,6 +25,60 @@ include("../input/params_MCMC.jl")
 include("../utils/adversarial_utils.jl")
 include("../utils/adversarial_optimizer.jl")
 
+# ----------------------------------------------------------------------------
+# Best iteration tracking and VTU management
+# ----------------------------------------------------------------------------
+
+mutable struct BestVTUTracker
+    badness::Float64
+    compliance::Float64
+    iter::Int
+    vtu_path::Union{String, Nothing}
+end
+
+function init_best_tracker()
+    return BestVTUTracker(-Inf, Inf, 0, nothing)
+end
+
+function delete_previous_vtu!(tracker::BestVTUTracker)
+    if tracker.vtu_path !== nothing && isfile(tracker.vtu_path)
+        try
+            rm(tracker.vtu_path; force=true)
+            println("    🗑️  Deleted previous best VTU: $(tracker.vtu_path)")
+        catch e
+            @warn "Failed to delete previous best VTU" path=tracker.vtu_path error=e
+        end
+    end
+end
+
+function save_best_vtu!(tracker::BestVTUTracker, X::AbstractVector{<:Real}, iter_id::Int; save_dir::AbstractString=SAVE_PATH)
+    # Ensure directory exists
+    mkpath(save_dir)
+    # Compose filename
+    fname = joinpath(save_dir, @sprintf("best_iteration_%04d.vtu", iter_id))
+    # Export using project helper; density=X
+    try
+        export_vtk(u, dh, grid, cv_post, mp, ip, save_dir, @sprintf("best_iteration_%04d", iter_id); density=X)
+        tracker.vtu_path = fname
+        println("    💾 Saved best VTU: $(fname)")
+    catch e
+        @warn "Failed to export best VTU" iter=iter_id error=e
+    end
+end
+
+function persist_best_metadata(save_dir::AbstractString, tracker::BestVTUTracker)
+    meta_file = joinpath(save_dir, "best_metadata.txt")
+    open(meta_file, "w") do io
+        println(io, "Best iteration metadata")
+        println(io, "timestamp: ", Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS"))
+        println(io, @sprintf("badness: %.6f", tracker.badness))
+        println(io, @sprintf("compliance: %.6f", tracker.compliance))
+        println(io, "iteration: ", tracker.iter)
+        println(io, "vtu_path: ", tracker.vtu_path === nothing ? "" : tracker.vtu_path)
+    end
+    println("    📝 Wrote metadata: $(meta_file)")
+end
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -397,6 +451,7 @@ function run_adversarial_optimization(; max_iterations=100, population_size=0)
     best_badness_so_far = Ref(-Inf)  # Track best badness found
     best_coeffs_so_far = nothing  # Track coefficients of best solution
     best_X_so_far = nothing  # Track density field of best solution
+    best_tracker = init_best_tracker()
     
     # Define objective wrapper INSIDE the function (needs access to local variables)
     function objective_wrapper_logged(x::Vector{Float64})
@@ -442,6 +497,14 @@ function run_adversarial_optimization(; max_iterations=100, population_size=0)
             best_coeffs_so_far = copy(coeffs_mat)
             best_X_so_far = copy(X)
             println("  🎯 NEW BEST! Badness=$(round(badness_adjusted, digits=6)) at iteration $iter")
+            # Manage VTU: delete previous and save current best
+            delete_previous_vtu!(best_tracker)
+            save_best_vtu!(best_tracker, X, iter; save_dir=SAVE_PATH)
+            # Update tracker fields and persist metadata
+            best_tracker.badness = badness_adjusted
+            best_tracker.compliance = compliance
+            best_tracker.iter = iter
+            persist_best_metadata(SAVE_PATH, best_tracker)
         end
         
         # Log this evaluation (use adjusted badness, include best-so-far)

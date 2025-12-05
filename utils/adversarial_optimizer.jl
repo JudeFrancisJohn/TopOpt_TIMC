@@ -307,24 +307,24 @@ function create_convergence_plot(opt::AdversarialOptimizer)
         iters = opt.history["iteration"]
         
         # Create multi-panel plot
-        p1 = plot(iters, opt.history["badness"], 
-                 label="Badness", lw=2, marker=:circle,
-                 xlabel="Iteration", ylabel="Badness",
+    p1 = plot(iters, opt.history["badness"], 
+         label="Badness", lw=2, marker=:circle,
+         xlabel="Objective Evaluation (outer) count", ylabel="Badness",
                  title="Adversarial Objective")
         
-        p2 = plot(iters, opt.history["compliance"],
-                 label="Compliance", lw=2, marker=:square, color=:red,
-                 xlabel="Iteration", ylabel="Compliance",
+    p2 = plot(iters, opt.history["compliance"],
+         label="Compliance", lw=2, marker=:square, color=:red,
+         xlabel="Objective Evaluation (outer) count", ylabel="Compliance",
                  title="Structural Compliance", yaxis=:log10)
         
-        p3 = plot(iters, opt.history["intermediate_frac"] .* 100,
-                 label="Intermediate %", lw=2, marker=:diamond, color=:green,
-                 xlabel="Iteration", ylabel="Percentage",
+    p3 = plot(iters, opt.history["intermediate_frac"] .* 100,
+         label="Intermediate %", lw=2, marker=:diamond, color=:green,
+         xlabel="Objective Evaluation (outer) count", ylabel="Percentage",
                  title="Intermediate Density Fraction")
         
-        p4 = plot(iters, opt.history["gray_indicator"],
-                 label="Gray Indicator", lw=2, marker=:star, color=:purple,
-                 xlabel="Iteration", ylabel="GI",
+    p4 = plot(iters, opt.history["gray_indicator"],
+         label="Gray Indicator", lw=2, marker=:star, color=:purple,
+         xlabel="Objective Evaluation (outer) count", ylabel="GI",
                  title="Gray Indicator")
         
         combined = plot(p1, p2, p3, p4, layout=(2,2), size=(1200, 800))
