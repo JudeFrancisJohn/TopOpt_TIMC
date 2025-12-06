@@ -98,16 +98,18 @@ const SEED = 42
 Random.seed!(SEED)
 println("Random seed: $(SEED)")
 
-# Define properties to optimize
-const PROPERTIES = (:μ_l, :μ_t, :α, :β)
+# Define properties to optimize (from input/params_mat.jl via VARIABLE_PROPERTIES)
+const PROPERTIES = VARIABLE_PROPERTIES
 const N_PROPS = length(PROPERTIES)
 
 # KL expansion parameters - INCREASED for stronger material heterogeneity
 const σs = Dict(
-    :μ_l => 1.5,  # Increased from 0.8 to create stronger variations
-    :μ_t => 1.5,  # Increased from 0.8       
-    :α   => 1.5,  # Increased from 0.8     
-    :β   => 1.5   # Increased from 0.8
+    :μ_l => 1.5,
+    :μ_t => 1.5,
+    :α   => 1.5,
+    :β   => 1.5,
+    :λ   => 0.5,
+    :angle => 1.0,
 )
 
 # Number of modes per property (REDUCED for efficiency)
@@ -138,9 +140,8 @@ for prop_sym in PROPERTIES
     println("  σ = $sigma")
     println("  N_modes = $N_MODES_PER_PROP")
     
-    # Use lognormal mode for positive-valued properties (shear moduli)
-    # This ensures μ_l, μ_t remain positive
-    mode_type = (prop_sym == :μ_l || prop_sym == :μ_t) ? :lognormal : :additive
+    # Use lognormal mode for positive-valued properties; additive for others
+    mode_type = (prop_sym in (:μ_l, :μ_t, :λ)) ? :lognormal : :additive
     
     kl_modes = compute_KL_eigenmodes(
         mp, coords_elem, prop_sym, sigma;
@@ -209,9 +210,13 @@ function evaluate_objective(coeffs_mat::Matrix{Float64})
         println("    Generated field $prop_sym: mean=$(round(mean(field), digits=3)), std=$(round(std(field), digits=3)), min=$(round(minimum(field), digits=3)), max=$(round(maximum(field), digits=3))")
     end
     
-    # Add constant properties (not sampled via KL)
-    result_fields[:λ] = fill(Float32(mp.λ), N_ELEM, N_LOC)
-    result_fields[:angle] = fill(Float32(mp.angle), N_ELEM, N_LOC)
+    # Add constant properties for any not sampled via KL
+    for prop_sym in (:μ_l, :μ_t, :α, :β, :λ, :angle)
+        if !haskey(result_fields, prop_sym)
+            val = prop_sym == :λ ? mp.λ : (prop_sym == :angle ? mp.angle : getfield(mp, Base.Meta.parse(string(prop_sym))))
+            result_fields[prop_sym] = fill(Float32(val), N_ELEM, N_LOC)
+        end
+    end
     
     # Build material field and validate
     println("\n  [DEBUG STEP 2] Building MaterialField structure...")
