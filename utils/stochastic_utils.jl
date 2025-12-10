@@ -147,6 +147,10 @@ function compute_KL_eigenmodes(material_params::MaterialParams,
         material_params.alpha
     elseif prop_sym == :β
         material_params.beta
+    elseif prop_sym == :angle
+        material_params.angle
+    elseif prop_sym == :λ
+        material_params.λ
     else
         error("Unknown property symbol: $prop_sym")
     end

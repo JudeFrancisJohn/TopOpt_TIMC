@@ -104,12 +104,12 @@ const N_PROPS = length(PROPERTIES)
 
 # KL expansion parameters - INCREASED for stronger material heterogeneity
 const σs = Dict(
-    :μ_l => 1.5,
-    :μ_t => 1.5,
+    :μ_l => 0.5,
+    :μ_t => 0.5,
     :α   => 1.5,
     :β   => 1.5,
     :λ   => 0.5,
-    :angle => 1.0,
+    :angle => 2.0,
 )
 
 # Number of modes per property (REDUCED for efficiency)
@@ -181,15 +181,19 @@ Runs full topology optimization and computes badness metrics.
 
 Returns: (badness, compliance, X, diagnostics)
 """
-function evaluate_objective(coeffs_mat::Matrix{Float64})
+function evaluate_objective(coeffs_mat::Matrix{Float64}, PROPERTIES)
     
     # Convert matrix to Dict format
     coeffs_dict = matrix_to_coeffs_dict(coeffs_mat, PROPERTIES, n_modes)
     
     # DEBUG: Print coefficient statistics to verify they're changing
     println("\n[DEBUG] Coefficient stats:")
-    println("  μ_l: mean=$(round(mean(coeffs_dict[:μ_l]), digits=3)), std=$(round(std(coeffs_dict[:μ_l]), digits=3)), max_abs=$(round(maximum(abs.(coeffs_dict[:μ_l])), digits=3))")
-    println("  μ_t: mean=$(round(mean(coeffs_dict[:μ_t]), digits=3)), std=$(round(std(coeffs_dict[:μ_t]), digits=3)), max_abs=$(round(maximum(abs.(coeffs_dict[:μ_t])), digits=3))")
+    for prop_sym in PROPERTIES
+        if haskey(coeffs_dict, prop_sym)
+            c_vals = coeffs_dict[prop_sym]
+            println("  $prop_sym: mean=$(round(mean(c_vals), digits=3)), std=$(round(std(c_vals), digits=3)), max_abs=$(round(maximum(abs.(c_vals)), digits=3))")
+        end
+    end
     
     # Generate fields using pre-computed eigenmodes (EFFICIENT - eigenmodes unchanged!)
     result_fields = Dict{Symbol, Any}()
@@ -212,7 +216,7 @@ function evaluate_objective(coeffs_mat::Matrix{Float64})
     
     # Add constant properties for any not sampled via KL
     for prop_sym in (:μ_l, :μ_t, :α, :β, :λ, :angle)
-        if !haskey(result_fields, prop_sym)
+        if !in(prop_sym, PROPERTIES)
             val = prop_sym == :λ ? mp.λ : (prop_sym == :angle ? mp.angle : getfield(mp, Base.Meta.parse(string(prop_sym))))
             result_fields[prop_sym] = fill(Float32(val), N_ELEM, N_LOC)
         end
@@ -223,16 +227,21 @@ function evaluate_objective(coeffs_mat::Matrix{Float64})
     mf = build_material_field(result_fields; use_centroids=false, eltype_out=Float32)
     
     # DEBUG: Check if material fields are varying
-    println("    MaterialField.μ_l: mean=$(round(mean(mf.μ_l), digits=3)), std=$(round(std(mf.μ_l), digits=3))")
-    println("    MaterialField.μ_t: mean=$(round(mean(mf.μ_t), digits=3)), std=$(round(std(mf.μ_t), digits=3))")
-    println("    MaterialField.α: mean=$(round(mean(mf.α), digits=3)), std=$(round(std(mf.α), digits=3))")
-    println("    MaterialField.β: mean=$(round(mean(mf.β), digits=3)), std=$(round(std(mf.β), digits=3))")
+    for prop_sym in PROPERTIES
+        if hasfield(typeof(mf), prop_sym)
+            val = getfield(mf, prop_sym)
+            println("    MaterialField.$prop_sym: mean=$(round(mean(val), digits=3)), std=$(round(std(val), digits=3))")
+        end
+    end
     
     # Check a specific element to verify spatial variation
-    elem_1_μl = [mf.μ_l[1, i] for i in 1:N_LOC]
-    elem_1_μt = [mf.μ_t[1, i] for i in 1:N_LOC]
-    println("    Element 1 μ_l values across nodes: $(round.(elem_1_μl, digits=2))")
-    println("    Element 1 μ_t values across nodes: $(round.(elem_1_μt, digits=2))")
+    for prop_sym in PROPERTIES
+        if hasfield(typeof(mf), prop_sym)
+            val = getfield(mf, prop_sym)
+            elem_1_val = [val[1, i] for i in 1:N_LOC]
+            println("    Element 1 $prop_sym values across nodes: $(round.(elem_1_val, digits=2))")
+        end
+    end
 
     
     # Validate material field (RELAXED - allow extreme values for adversarial search)
@@ -314,10 +323,12 @@ function evaluate_objective(coeffs_mat::Matrix{Float64})
                     println(io, "  $prop: $(coeffs)")
                 end
                 println(io, "\nMaterial Field Statistics:")
-                println(io, "  μ_l: mean=$(mean(mf.μ_l)), std=$(std(mf.μ_l)), min=$(minimum(mf.μ_l)), max=$(maximum(mf.μ_l))")
-                println(io, "  μ_t: mean=$(mean(mf.μ_t)), std=$(std(mf.μ_t)), min=$(minimum(mf.μ_t)), max=$(maximum(mf.μ_t))")
-                println(io, "  α: mean=$(mean(mf.α)), std=$(std(mf.α)), min=$(minimum(mf.α)), max=$(maximum(mf.α))")
-                println(io, "  β: mean=$(mean(mf.β)), std=$(std(mf.β)), min=$(minimum(mf.β)), max=$(maximum(mf.β))")
+                for prop_sym in PROPERTIES
+                    if hasfield(typeof(mf), prop_sym)
+                        val = getfield(mf, prop_sym)
+                        println(io, "  $prop_sym: mean=$(mean(val)), std=$(std(val)), min=$(minimum(val)), max=$(maximum(val))")
+                    end
+                end
                 if isdefined(Main, :x)
                     println(io, "\nDensity Field x:")
                     println(io, "  mean=$(mean(x)), std=$(std(x)), min=$(minimum(x)), max=$(maximum(x))")
@@ -467,7 +478,7 @@ function run_adversarial_optimization(; max_iterations=100, population_size=0)
         coeffs_mat = reshape(x, max_modes, N_PROPS)
         
         # Evaluate (returns badness to MAXIMIZE)
-        badness, compliance, X, diagnostics = evaluate_objective(coeffs_mat)
+        badness, compliance, X, diagnostics = evaluate_objective(coeffs_mat,PROPERTIES)
         
         # Update compliance history for adaptive reference
         push!(compliance_history, compliance)

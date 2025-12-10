@@ -121,9 +121,14 @@ function reconstruct_best_vtu(run_dir::AbstractString; overwrite::Bool=false)
         field = sample_KL_field(kl_modes_dict[prop_sym], coeffs_dict[prop_sym]; eltype_out=Float32)
         result_fields[prop_sym] = field
     end
-    # Add constant properties (not sampled)
-    result_fields[:λ] = fill(Float32(mp.λ), size(coords_elem,1), size(coords_elem,2))
-    result_fields[:angle] = fill(Float32(mp.angle), size(coords_elem,1), size(coords_elem,2))
+    # Add constant properties for any not sampled via KL
+    nelem, nloc = size(coords_elem)
+    for prop_sym in (:μ_l, :μ_t, :α, :β, :λ, :angle)
+        if !haskey(result_fields, prop_sym)
+            val = prop_sym == :λ ? mp.λ : (prop_sym == :angle ? mp.angle : getfield(mp, Base.Meta.parse(string(prop_sym))))
+            result_fields[prop_sym] = fill(Float32(val), nelem, nloc)
+        end
+    end
 
     # Build MaterialField
     mf = build_material_field(result_fields; use_centroids=false, eltype_out=Float32)
