@@ -9,4 +9,4 @@ angle = 0.0  # Default fiber angle (can be overridden by multi_angle_topopt.jl)
 # Select which material properties are treated as spatial random fields via KL expansion.
 # Choose from symbols: :μ_l, :μ_t, :α, :β, :λ, :angle
 # First try: vary alpha, beta, and angle
-const VARIABLE_PROPERTIES = (:α, :β, :angle)
+VARIABLE_PROPERTIES = (:α, :β, :angle)

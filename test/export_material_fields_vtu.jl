@@ -84,8 +84,14 @@ function reconstruct_material_field(run_dir::AbstractString)
     end
     # constants
     nelem, nloc = size(coords_elem)
-    result_fields[:λ] = fill(Float32(mp.λ), nelem, nloc)
-    result_fields[:angle] = fill(Float32(mp.angle), nelem, nloc)
+    
+    # Add constant properties for any not sampled via KL
+    for prop_sym in (:μ_l, :μ_t, :α, :β, :λ, :angle)
+        if !haskey(result_fields, prop_sym)
+            val = prop_sym == :λ ? mp.λ : (prop_sym == :angle ? mp.angle : getfield(mp, Base.Meta.parse(string(prop_sym))))
+            result_fields[prop_sym] = fill(Float32(val), nelem, nloc)
+        end
+    end
     mf = build_material_field(result_fields; use_centroids=false, eltype_out=Float32)
     return mf, properties
 end
