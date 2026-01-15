@@ -7,7 +7,7 @@ optimization algorithms (CMA-ES, Simulated Annealing, etc.)
 """
 
 using Random
-
+using Dates
 # ============================================================================
 # ABSTRACT TYPE DEFINITION
 # ============================================================================
@@ -149,7 +149,7 @@ struct OptimizerConfig
         n_props = length(properties)
         
         if isempty(save_path)
-            using Dates
+
             dt_str = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
             save_path = joinpath("output", "adversarial_$(dt_str)")
         end

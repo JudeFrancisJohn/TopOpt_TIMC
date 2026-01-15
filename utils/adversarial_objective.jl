@@ -7,6 +7,8 @@ Generates material fields from KL coefficients and runs topology optimization.
 
 using Statistics
 
+include("metrics.jl")
+include("validators.jl")
 include("adversarial_utils.jl")
 include("adversarial_logging.jl")
 
@@ -56,6 +58,10 @@ function evaluate_objective(coeffs_mat::Matrix{Float64},
     # Convert matrix to Dict format
     coeffs_dict = matrix_to_coeffs_dict(coeffs_mat, properties, n_modes)
     
+    # Map Greek symbols to Latin field names for build_material_field
+    # MaterialParams uses 'alpha', 'beta' but we may use :α, :β in VARIABLE_PROPERTIES
+    PROPERTY_MAP = Dict(:α => :alpha, :β => :beta)
+    
     # Generate KL fields
     result_fields = Dict{Symbol, Any}()
     for prop_sym in properties
@@ -65,22 +71,36 @@ function evaluate_objective(coeffs_mat::Matrix{Float64},
             coeffs_for_prop; 
             eltype_out=Float32
         )
-        result_fields[prop_sym] = field
+        # Store with Latin name (build_material_field expects :alpha, :beta)
+        store_name = get(PROPERTY_MAP, prop_sym, prop_sym)
+        result_fields[store_name] = field
     end
     
     # Add constant properties not varied by KL
     for prop_sym in (:μ_l, :μ_t, :α, :β, :λ, :angle)
         if !in(prop_sym, properties)
-            val = getproperty(mp, prop_sym)
-            result_fields[prop_sym] = fill(Float32(val), N_ELEM, N_LOC)
+            # Get the actual field name (map Greek to Latin if needed)
+            field_name = get(PROPERTY_MAP, prop_sym, prop_sym)
+            val = getproperty(mp, field_name)
+            
+            # Store with Latin name (build_material_field expects :alpha, :beta)
+            store_name = get(PROPERTY_MAP, prop_sym, prop_sym)
+            result_fields[store_name] = fill(Float32(val), N_ELEM, N_LOC)
         end
     end
     
     # Build material field
     mf = build_material_field(result_fields; use_centroids=false, eltype_out=Float32)
     
+    # Initialize diagnostics dictionary
+    diagnostics = Dict{String, Any}()
+    
     # Validate material field (relaxed for adversarial search)
-    is_valid, diagnostics = validate_material_field(mf, mp; tolerance_factor=validation_tolerance)
+    is_valid, val_diagnostics = validate_material_field(mf, mp; tolerance_factor=validation_tolerance)
+    merge!(diagnostics, val_diagnostics)
+    
+    # Store material field in diagnostics for VTU export
+    diagnostics["material_field"] = mf
     
     if !is_valid
         has_negative_mu = get(diagnostics, "μ_l_negative", false) || 
@@ -161,17 +181,25 @@ function create_objective_function(kl_modes_dict::Dict,
                                    mf,
                                    avg_mp_store,
                                    topopt_fn::Function,
-                                   build_KE_fn::Function;
+                                   build_KE_fn::Function,
+                                   mf_current_ref::Union{Nothing, Ref}=nothing;
                                    validation_tolerance::Float64=10.0,
                                    output_root::String="output")
     
     return function(coeffs_mat::Matrix{Float64})
-        return evaluate_objective(
+        badness, compliance, X, diagnostics = evaluate_objective(
             coeffs_mat, kl_modes_dict, properties, n_modes,
             mp, coords_elem, dh, mf, avg_mp_store,
             topopt_fn, build_KE_fn;
             validation_tolerance=validation_tolerance,
             output_root=output_root
         )
+        
+        # Update mf_current_ref if provided (for VTU export)
+        if mf_current_ref !== nothing && haskey(diagnostics, "material_field")
+            mf_current_ref[] = diagnostics["material_field"]
+        end
+        
+        return badness, compliance, X, diagnostics
     end
 end

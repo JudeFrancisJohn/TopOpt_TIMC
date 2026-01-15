@@ -30,8 +30,20 @@ const σs_ADVERSARIAL = Dict(
     :angle => 2.0,
 )
 
-# Correlation length for KL expansion (spatial scale of variation)
-const Lc_ADVERSARIAL = 2.0
+# Correlation lengths for KL expansion (spatial scale of variation)
+# Different properties can have different spatial correlation structures
+# Note: Using a function to avoid constant redefinition issues in REPL
+function get_Lc_ADVERSARIAL(prop_sym::Symbol)
+    lc_dict = Dict(
+        :μ_l => 2.0,    # Longitudinal shear: medium-scale variations
+        :μ_t => 1.5,    # Transverse shear: finer-scale variations
+        :α   => 3.0,    # Alpha: coarser variations
+        :β   => 3.0,    # Beta: coarser variations
+        :λ   => 2.5,    # Lambda: medium-coarse variations
+        :angle => 4.0,  # Angle: very coarse variations
+    )
+    return get(lc_dict, prop_sym, 2.0)  # Default to 2.0 if property not found
+end
 
 # ============================================================================
 # OPTIMIZATION PARAMETERS

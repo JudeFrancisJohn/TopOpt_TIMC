@@ -111,27 +111,52 @@ function reconstruct_best_vtu(run_dir::AbstractString; overwrite::Bool=false)
 
     # Load KL and best coefficients
     kl_modes_dict, n_modes, properties, best_coeffs_mat = load_kl_and_coeffs(run_dir)
+    
+    println("\n[RECONSTRUCTION DEBUG]")
+    println("  Properties from saved data: ", properties)
+    println("  KL modes available for: ", keys(kl_modes_dict))
+    println("  Best coeffs matrix size: ", size(best_coeffs_mat))
 
     # Convert matrix -> dict aligned with properties order
     coeffs_dict = matrix_to_coeffs_dict(best_coeffs_mat, properties, n_modes)
+    
+    println("  Coeffs dict keys: ", keys(coeffs_dict))
+    for (k, v) in coeffs_dict
+        println("    $k: ", length(v), " coefficients")
+    end
 
-    # Generate material fields for each optimized property
+    # Generate material fields for each optimized property (using Greek symbols as stored)
     result_fields = Dict{Symbol, Any}()
     for prop_sym in properties
         field = sample_KL_field(kl_modes_dict[prop_sym], coeffs_dict[prop_sym]; eltype_out=Float32)
         result_fields[prop_sym] = field
+        println("  Generated field for $prop_sym: size ", size(field))
     end
-    # Add constant properties for any not sampled via KL
+    
+    # Map Greek to Latin for build_material_field (it expects Latin names)
+    # Also add constant properties for any not sampled via KL
+    GREEK_TO_LATIN = Dict(:α => :alpha, :β => :beta)
     nelem, nloc = size(coords_elem)
-    for prop_sym in (:μ_l, :μ_t, :α, :β, :λ, :angle)
-        if !haskey(result_fields, prop_sym)
-            val = prop_sym == :λ ? mp.λ : (prop_sym == :angle ? mp.angle : getfield(mp, Base.Meta.parse(string(prop_sym))))
-            result_fields[prop_sym] = fill(Float32(val), nelem, nloc)
+    
+    # Create Latin-named dict for build_material_field
+    latin_fields = Dict{Symbol, Any}()
+    for (greek_sym, field) in result_fields
+        latin_sym = get(GREEK_TO_LATIN, greek_sym, greek_sym)
+        latin_fields[latin_sym] = field
+        println("  Mapped $greek_sym -> $latin_sym")
+    end
+    
+    # Fill in any missing required properties with constants
+    for prop_sym in (:μ_l, :μ_t, :alpha, :beta, :λ, :angle)
+        if !haskey(latin_fields, prop_sym)
+            val = getfield(mp, prop_sym)
+            latin_fields[prop_sym] = fill(Float32(val), nelem, nloc)
+            println("  Added constant field for $prop_sym = $val")
         end
     end
 
     # Build MaterialField
-    mf = build_material_field(result_fields; use_centroids=false, eltype_out=Float32)
+    mf = build_material_field(latin_fields; use_centroids=false, eltype_out=Float32)
 
     # Rebuild KE store for FE
     build_KEStore!(dh, mf, nnodes_loc, avg_mp_store)
@@ -152,9 +177,9 @@ function reconstruct_best_vtu(run_dir::AbstractString; overwrite::Bool=false)
         vtu_path = joinpath(save_dir, tag * "_reconstructed.vtu")
     end
 
-    # Export VTU
-    export_vtk(u, dh, grid, cv_post, mp, ip, save_dir, splitext(basename(vtu_path))[1]; density=X)
-    println("Wrote: $(vtu_path)")
+    # Export VTU with material field
+    export_vtk(u, dh, grid, cv_post, mp, ip, save_dir, splitext(basename(vtu_path))[1]; density=X, material_field=mf)
+    println("Wrote: $(vtu_path) (with material field parameters)")
 
     return X, c, vtu_path
 end
