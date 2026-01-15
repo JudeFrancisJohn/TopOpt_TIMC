@@ -51,8 +51,8 @@ function build_material_field(fields::Dict{Symbol,Any}; use_centroids::Bool=fals
     nelem, nloc = _infer_dims(fields)
     μ_l_m  = _to_matrix(fields[:μ_l],  nelem, nloc, eltype_out, use_centroids)
     μ_t_m  = _to_matrix(fields[:μ_t],  nelem, nloc, eltype_out, use_centroids)
-    α_m    = _to_matrix(fields[:α],    nelem, nloc, eltype_out, use_centroids)
-    β_m    = _to_matrix(fields[:β],    nelem, nloc, eltype_out, use_centroids)
+    α_m    = _to_matrix(fields[:alpha],    nelem, nloc, eltype_out, use_centroids)
+    β_m    = _to_matrix(fields[:beta],    nelem, nloc, eltype_out, use_centroids)
     λ_m    = _to_matrix(fields[:λ],    nelem, nloc, eltype_out, use_centroids)
     ang_m  = _to_matrix(fields[:angle],nelem, nloc, eltype_out, use_centroids)
     return MaterialField(μ_l_m, μ_t_m, α_m, β_m, λ_m, ang_m, use_centroids)
@@ -504,7 +504,7 @@ function remove_files(save_path)
     end
 end
 
-@views function export_vtk(u, dh, grid, cv, mp, ip, save_path, id; density=nothing)
+@views function export_vtk(u, dh, grid, cv, mp, ip, save_path, id; density=nothing, material_field=nothing)
 
     n_count = length(dh.grid.nodes)
     σ,ϵ = compute_results(cv, dh, u, mp);
@@ -549,6 +549,7 @@ end
         vtk_point_data(vtk, dh, u)
         vtk_point_data(vtk, sigvec, "σ")
         vtk_point_data(vtk, strainvec, "ϵ")
+        
         # optionally write cell-wise density (topology field)
         if density !== nothing
             try
@@ -557,6 +558,44 @@ end
                 @warn "export_vtk: failed to write density cell data: $err"
             end
         end
+        
+        # Export material parameter fields (stochastic properties)
+        if material_field !== nothing
+            try
+                # Get number of cells
+                ncells = getncells(grid)
+                
+                # Export each material property as cell data
+                # Average over nodes if use_centroids=false
+                if material_field.use_centroids
+                    # Already per-cell
+                    vtk_cell_data(vtk, vec(material_field.μ_l), "μ_l")
+                    vtk_cell_data(vtk, vec(material_field.μ_t), "μ_t")
+                    vtk_cell_data(vtk, vec(material_field.α), "alpha")
+                    vtk_cell_data(vtk, vec(material_field.β), "beta")
+                    vtk_cell_data(vtk, vec(material_field.λ), "lambda")
+                    vtk_cell_data(vtk, vec(material_field.angle), "angle")
+                else
+                    # Average over element nodes
+                    μ_l_avg = vec(mean(material_field.μ_l, dims=2))
+                    μ_t_avg = vec(mean(material_field.μ_t, dims=2))
+                    α_avg = vec(mean(material_field.α, dims=2))
+                    β_avg = vec(mean(material_field.β, dims=2))
+                    λ_avg = vec(mean(material_field.λ, dims=2))
+                    angle_avg = vec(mean(material_field.angle, dims=2))
+                    
+                    vtk_cell_data(vtk, μ_l_avg, "μ_l")
+                    vtk_cell_data(vtk, μ_t_avg, "μ_t")
+                    vtk_cell_data(vtk, α_avg, "alpha")
+                    vtk_cell_data(vtk, β_avg, "beta")
+                    vtk_cell_data(vtk, λ_avg, "lambda")
+                    vtk_cell_data(vtk, angle_avg, "angle")
+                end
+            catch err
+                @warn "export_vtk: failed to write material field data: $err"
+            end
+        end
+        
         vtk_save(vtk)
     end
 

@@ -12,7 +12,8 @@ using Statistics
 using Printf
 
 include("abstract_optimizer.jl")
-include("adversarial_logging.jl")
+include("io_manager.jl")
+include("metrics.jl")
 include("adversarial_utils.jl")
 
 # ============================================================================
@@ -23,6 +24,7 @@ include("adversarial_utils.jl")
     CMAESOptimizer
 
 CMA-ES based adversarial optimizer using BlackBoxOptim.jl.
+Focuses purely on optimization state - all I/O handled by IOManager.
 """
 mutable struct CMAESOptimizer <: AbstractAdversarialOptimizer
     config::OptimizerConfig
@@ -30,9 +32,7 @@ mutable struct CMAESOptimizer <: AbstractAdversarialOptimizer
     population_size::Int
     initial_sigma::Float64
     
-    # Tracking
-    history::Dict{String, Vector{Any}}
-    best_tracker::BestVTUTracker
+    # Algorithm-specific tracking (not I/O)
     compliance_history::Vector{Float64}
     best_badness_ref::Ref{Float64}
     best_coeffs_ref::Ref{Union{Nothing, Matrix{Float64}}}
@@ -49,68 +49,50 @@ mutable struct CMAESOptimizer <: AbstractAdversarialOptimizer
             population_size = 4 + floor(Int, 3 * log(n_params))
         end
         
-        # Initialize history
-        history = Dict{String, Vector{Any}}(
-            "iteration" => Int[],
-            "badness" => Float64[],
-            "compliance" => Float64[],
-            "intermediate_frac" => Float64[],
-            "severity" => Float64[],
-            "gray_indicator" => Float64[],
-            "timestamp" => String[]
-        )
-        
-        best_tracker = init_best_tracker()
-        
         new(config, max_iterations, population_size, initial_sigma,
-            history, best_tracker, Float64[],
-            Ref(-Inf), Ref(nothing), Ref(nothing))
+            Float64[], Ref(-Inf), Ref{Union{Nothing, Matrix{Float64}}}(nothing), Ref{Union{Nothing, Vector{Float64}}}(nothing))
     end
 end
 
 """
-    optimize!(optimizer::CMAESOptimizer, objective_fn::Function, initial_coeffs::Matrix{Float64})
+    optimize!(optimizer::CMAESOptimizer, objective_fn::Function, initial_coeffs::Matrix{Float64}, export_vtk_fn::Function, io_manager::IOManager)
 
-Run CMA-ES optimization.
+Run CMA-ES optimization with clean separation of concerns.
 
 # Arguments
-- `optimizer::CMAESOptimizer`: Optimizer instance
+- `optimizer::CMAESOptimizer`: Optimizer instance (holds algorithm state)
 - `objective_fn::Function`: Objective function with signature `f(coeffs_mat) -> (badness, compliance, X, diagnostics)`
 - `initial_coeffs::Matrix{Float64}`: Initial coefficient matrix
+- `export_vtk_fn::Function`: VTK export function
+- `io_manager::IOManager`: Handles all I/O operations (printing, saving, exporting)
 
 # Returns
 Tuple of (best_coeffs_mat, best_badness, bboptimize_result)
 """
 function optimize!(optimizer::CMAESOptimizer, objective_fn::Function, 
-                   initial_coeffs::Matrix{Float64}, export_vtk_fn::Function)
+                   initial_coeffs::Matrix{Float64}, export_vtk_fn::Function,
+                   io_manager::IOManager)
     
     config = optimizer.config
     
-    println_optimization_header(config.save_path, config.properties, config.n_modes, 
-                                 optimizer.max_iterations)
+    # Print header via IOManager
+    print_header(io_manager, config.properties, config.n_modes, 
+                 optimizer.max_iterations, "CMA-ES")
     
-    # Flatten initial coefficients
+    # Flatten initial coefficients for BlackBoxOptim
     x0 = flatten_coeffs(initial_coeffs)
     search_range = [(config.coeff_lower_bound, config.coeff_upper_bound) for _ in 1:length(x0)]
-    
-    println("\nStarting CMA-ES optimization...")
-    println("="^80)
     
     # Evaluation counter
     eval_counter = [0]
     
-    # Create objective wrapper
+    # Create objective wrapper for BlackBoxOptim
     function objective_wrapper(x::Vector{Float64})
         eval_counter[1] += 1
         iter = eval_counter[1]
-        
-        # Reshape to matrix
+
         coeffs_mat = unflatten_coeffs(x, config.max_modes, config.n_props)
-        
-        # Evaluate objective
         badness, compliance, X, diagnostics = objective_fn(coeffs_mat)
-        
-        # Track compliance history for adaptive reference
         push!(optimizer.compliance_history, compliance)
         
         # Compute adaptive compliance reference (median of observed values)
@@ -121,10 +103,6 @@ function optimize!(optimizer::CMAESOptimizer, objective_fn::Function,
         end
         
         # Recompute badness with adaptive compliance reference
-        frac = diagnostics["intermediate_frac"]
-        severity = diagnostics["severity"]
-        gray = diagnostics["gray"]
-        
         badness_adjusted = compute_combined_badness(
             X, compliance;
             w_frac=config.w_frac,
@@ -135,50 +113,40 @@ function optimize!(optimizer::CMAESOptimizer, objective_fn::Function,
             stability_weight=config.w_stability
         )
         
+        # Update diagnostics with adjusted values
+        diagnostics["badness_adjusted"] = badness_adjusted
+        
         # Update best-so-far tracking
         if badness_adjusted > optimizer.best_badness_ref[]
+            old_best = optimizer.best_badness_ref[]
             optimizer.best_badness_ref[] = badness_adjusted
             optimizer.best_coeffs_ref[] = copy(coeffs_mat)
             optimizer.best_X_ref[] = copy(X)
             
-            print_best_update(badness_adjusted, iter, optimizer.best_badness_ref[])
-            
-            # Manage VTU files
-            delete_previous_vtu!(optimizer.best_tracker)
-            
-            # Create wrapper for export function
-            function export_wrapper(save_dir, filename_prefix; density=nothing)
-                export_vtk_fn(save_dir, filename_prefix, density)
-            end
-            
-            save_best_vtu!(optimizer.best_tracker, X, iter, config.save_path, export_wrapper)
-            
-            optimizer.best_tracker.badness = badness_adjusted
-            optimizer.best_tracker.compliance = compliance
-            optimizer.best_tracker.iter = iter
-            persist_best_metadata(config.save_path, optimizer.best_tracker)
+            # Delegate all I/O to IOManager
+            handle_new_best(io_manager, badness_adjusted, compliance, iter, X, 
+                          coeffs_mat, export_vtk_fn)
         end
         
-        # Log iteration
-        log_iteration_to_history!(optimizer.history, iter, badness_adjusted, compliance, 
-                                   frac, severity, gray)
+        # Log iteration to history (via IOManager)
+        log_iteration(io_manager, iter, badness_adjusted, compliance, diagnostics)
         
-        # Print summary periodically
-        if iter % 10 == 0 || iter == 1
-            print_optimization_summary(iter, badness_adjusted, compliance, frac, severity, gray)
-            println("    Best so far: $(round(optimizer.best_badness_ref[], digits=6))")
+        # Print summary periodically (via IOManager)
+        if should_print_summary(iter)
+            print_iteration_summary(io_manager, iter, badness_adjusted, compliance, 
+                                   diagnostics, optimizer.best_badness_ref[])
         end
         
-        # Save checkpoint periodically
-        if iter % config.save_every == 0
-            save_checkpoint(config.save_path, iter, coeffs_mat, X)
+        # Save checkpoint periodically (via IOManager)
+        if should_save_checkpoint(io_manager, iter)
+            save_checkpoint(io_manager, iter, coeffs_mat, X)
         end
         
         # Return NEGATIVE badness for minimization
         return -badness_adjusted
     end
     
-    # Run BlackBoxOptim
+    # Run BlackBoxOptim (pure optimization, no I/O)
     result = bboptimize(
         objective_wrapper;
         SearchRange = search_range,
@@ -188,70 +156,35 @@ function optimize!(optimizer::CMAESOptimizer, objective_fn::Function,
         TraceMode = :compact
     )
     
-    # Extract final result
+    # Extract final result from BlackBoxOptim
     final_x = best_candidate(result)
     final_coeffs = unflatten_coeffs(final_x, config.max_modes, config.n_props)
     
-    # Evaluate final solution
-    final_badness, final_compliance, final_X, final_diag = objective_fn(final_coeffs)
-    
-    # Save final results
-    save_final_results(config.save_path, final_coeffs, final_badness, optimizer.history)
-    
-    return final_coeffs, final_badness, result
-end
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-function log_iteration_to_history!(history::Dict, iter::Int, badness::Float64, 
-                                    compliance::Float64, frac::Float64, 
-                                    severity::Float64, gray::Float64)
-    using Dates
-    push!(history["iteration"], iter)
-    push!(history["badness"], badness)
-    push!(history["compliance"], compliance)
-    push!(history["intermediate_frac"], frac)
-    push!(history["severity"], severity)
-    push!(history["gray_indicator"], gray)
-    push!(history["timestamp"], string(Dates.now()))
-end
-
-function save_checkpoint(save_path::String, iter::Int, coeffs_mat::Matrix{Float64}, 
-                         X::Vector{Float64})
-    using JLD2
-    checkpoint_file = joinpath(save_path, "checkpoint_iter_$(iter).jld2")
-    jldsave(checkpoint_file; coefficients=coeffs_mat, density_field=X, iteration=iter)
-    println("    💾 Saved checkpoint: $(checkpoint_file)")
-end
-
-function save_final_results(save_path::String, coeffs_mat::Matrix{Float64}, 
-                            badness::Float64, history::Dict)
-    using JLD2
-    
-    # Save coefficients
-    coeffs_file = joinpath(save_path, "best_coefficients.txt")
-    open(coeffs_file, "w") do io
-        println(io, "Best Coefficients (badness = $(badness))")
-        println(io, "Shape: $(size(coeffs_mat))")
-        println(io, "\nMatrix:")
-        for i in 1:size(coeffs_mat, 1)
-            println(io, join(coeffs_mat[i, :], ", "))
-        end
+    # Use the best coefficients found during optimization (tracked internally)
+    # This is more reliable than re-evaluating the BlackBoxOptim result
+    best_coeffs_found = if optimizer.best_coeffs_ref[] !== nothing
+        optimizer.best_coeffs_ref[]
+    else
+        # Fallback: use final BlackBoxOptim candidate
+        final_coeffs
     end
     
-    # Save history
-    history_file = joinpath(save_path, "optimization_history.jld2")
-    jldsave(history_file; history=history)
+    best_badness_found = if optimizer.best_badness_ref[] > -Inf
+        optimizer.best_badness_ref[]
+    else
+        # Fallback: evaluate the final solution
+        badness, _, _, _ = objective_fn(final_coeffs)
+        badness
+    end
     
-    println("\n✅ Final results saved:")
-    println("   Coefficients: $(coeffs_file)")
-    println("   History: $(history_file)")
-end
-
-function println_optimization_header(save_path::String, properties::Tuple, 
-                                     n_modes::Dict, max_iterations::Int)
-    print_optimization_header(save_path, properties, n_modes, max_iterations)
-    println("\nOptimizer: CMA-ES (Adaptive Differential Evolution)")
+    # Save final results (via IOManager)
+    save_final_results(io_manager, best_coeffs_found, best_badness_found; 
+                      properties=optimizer.config.properties, 
+                      n_modes=optimizer.config.n_modes)
+    
+    # Create convergence plot
+    create_convergence_plot(io_manager)
+    print_completion_summary(io_manager, best_badness_found)
+    
+    return best_coeffs_found, best_badness_found, result
 end
