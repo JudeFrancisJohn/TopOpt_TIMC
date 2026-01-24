@@ -27,7 +27,7 @@ const σs_ADVERSARIAL = Dict(
     :α   => 1.5,
     :β   => 1.5,
     :λ   => 0.5,
-    :angle => 2.0,
+    :angle => 10,
 )
 
 # Correlation lengths for KL expansion (spatial scale of variation)
@@ -40,7 +40,7 @@ function get_Lc_ADVERSARIAL(prop_sym::Symbol)
         :α   => 3.0,    # Alpha: coarser variations
         :β   => 3.0,    # Beta: coarser variations
         :λ   => 2.5,    # Lambda: medium-coarse variations
-        :angle => 4.0,  # Angle: very coarse variations
+        :angle => 10.0,  # Angle: very coarse variations
     )
     return get(lc_dict, prop_sym, 2.0)  # Default to 2.0 if property not found
 end
