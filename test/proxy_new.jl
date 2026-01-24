@@ -28,8 +28,8 @@ include("../input/params_MCMC.jl")
 
 # Load adversarial optimization modules
 include("../utils/abstract_optimizer.jl")
+include("../utils/io_manager.jl")
 include("../utils/adversarial_objective.jl")
-include("../utils/adversarial_logging.jl")
 
 # Load concrete optimizer implementations
 include("../utils/cmaes_optimizer.jl")
@@ -77,9 +77,6 @@ println("="^80)
 const CACHE_DIR = joinpath(OUTPUT_ROOT, "eigenmode_cache")
 mkpath(CACHE_DIR)
 
-# Get mesh info for cache key
-const N_ELEM, N_LOC = size(coords_elem)
-
 # Create cache key from parameters that affect eigenmodes
 cache_key = "$(join(PROPERTIES, "_"))_Nmodes$(N_MODES_PER_PROP)_mesh$(N_ELEM)x$(N_LOC)"
 cache_file = joinpath(CACHE_DIR, "$(cache_key).jld2")
@@ -98,6 +95,7 @@ if isfile(cache_file)
         cached_data = JLD2.load(cache_file)
         kl_modes_dict = cached_data["kl_modes"]
         n_modes = cached_data["n_modes"]
+        cached_σs = get(cached_data, "σs", nothing)
         
         # Verify properties match
         if Set(keys(kl_modes_dict)) == Set(PROPERTIES)
@@ -181,14 +179,17 @@ if isempty(kl_modes_dict)
     for prop_sym in PROPERTIES
         sigma = get(σs_ADVERSARIAL, prop_sym, 0.5)
         
+        # Get correlation length for this property (use property-specific values)
+        Lc = get_Lc_ADVERSARIAL(prop_sym)
+        
         println("\nComputing eigenmodes for $prop_sym...")
-        println("  σ = $sigma, N_modes = $N_MODES_PER_PROP")
+        println("  σ = $sigma, Lc = $Lc, N_modes = $N_MODES_PER_PROP")
         
         mode_type = (prop_sym in (:μ_l, :μ_t, :λ)) ? :lognormal : :additive
         
         kl_modes = compute_KL_eigenmodes(
             mp, coords_elem, prop_sym, sigma;
-            Lc=Lc_ADVERSARIAL,
+            Lc=Lc,  # Use property-specific correlation length
             N_modes=N_MODES_PER_PROP,
             use_centroids=false,
             make_sparse=false,
@@ -272,19 +273,55 @@ println("  Type: $(OPTIMIZER_TYPE)")
 println("  Max iterations: $(MAX_ITERATIONS_ADVERSARIAL)")
 
 # ============================================================================
+# CREATE IO MANAGER
+# ============================================================================
+
+# Create IOManager to handle all console output and file saving
+io_manager = IOManager(
+    SAVE_PATH;
+    save_every=SAVE_EVERY_ADVERSARIAL,
+    verbose=true
+)
+
+println("\nI/O Manager configured:")
+println("  Save directory: $(SAVE_PATH)")
+println("  Checkpoint frequency: Every $(SAVE_EVERY_ADVERSARIAL) iterations")
+
+# ============================================================================
 # CREATE OBJECTIVE FUNCTION
 # ============================================================================
 
-# Create export wrapper for VTU saving
+# Create baseline material field with mean values (zero KL coefficients)
+println("\n" * "="^80)
+println("CREATING BASELINE MATERIAL FIELD")
+println("="^80)
+
+# Create fields dictionary with mean values for all properties
+baseline_fields = Dict{Symbol, Any}()
+for prop_sym in (:μ_l, :μ_t, :alpha, :beta, :λ, :angle)
+    val = getproperty(mp, prop_sym)
+    baseline_fields[prop_sym] = fill(Float32(val), N_ELEM, N_LOC)
+end
+
+# Build baseline material field
+mf = build_material_field(baseline_fields; use_centroids=false, eltype_out=Float32)
+mf_current = Ref(mf)  # Mutable reference for objective function to update
+
+println("Created baseline material field with mean values")
+println("  Elements: $(N_ELEM), Nodes per element: $(N_LOC)")
+
+# Create export wrapper for VTU saving with material field
 function export_vtk_wrapper(save_dir::String, filename_prefix::String, X::Vector{Float64})
-    export_vtk(u, dh, grid, cv_post, mp, ip, save_dir, filename_prefix; density=X)
+    export_vtk(u, dh, grid, cv_post, mp, ip, save_dir, filename_prefix; 
+               density=X, material_field=mf_current[])
 end
 
 # Create objective function closure
 objective_fn = create_objective_function(
     kl_modes_dict, PROPERTIES, n_modes,
     mp, coords_elem, dh, mf, avg_mp_store,
-    topopt_run, build_KEStore!;
+    topopt_run, build_KEStore!,
+    mf_current;  # Pass the mutable ref
     validation_tolerance=VALIDATION_TOLERANCE_FACTOR,
     output_root=OUTPUT_ROOT
 )
@@ -304,27 +341,32 @@ initial_coeffs = initialize_coefficients(
     initial_sigma=INITIAL_SIGMA_ADVERSARIAL
 )
 
-# Run optimization (polymorphic call - works for any optimizer type)
+# Run optimization with IOManager handling all I/O
 best_coeffs, best_badness, opt_result = optimize!(
     optimizer, 
     objective_fn, 
     initial_coeffs,
-    export_vtk_wrapper
+    export_vtk_wrapper,
+    io_manager  # Handles all printing, saving, and VTU management
 )
 
 # ============================================================================
-# FINALIZE
+# FINALIZATION
 # ============================================================================
+# Note: IOManager has already handled:
+#   - Saving final results (coefficients, history)
+#   - Printing completion summary
+#   - Managing best VTU file
 
-println("\n" * "="^80)
-println("OPTIMIZATION COMPLETE!")
-println("="^80)
-println("\nBest badness: $(round(best_badness, digits=6))")
-println("\nResults saved to: $SAVE_PATH")
-println("\nTo reconstruct material fields from best coefficients:")
-println("  1. Load coefficients from: best_coefficients.txt")
-println("  2. Load eigenmodes from: eigenmodes.jld2")
-println("  3. Use `sample_KL_field()` with pre-computed eigenmodes")
-println("  4. Build MaterialField and run TopOpt")
-
-println("\n✅ Done!")
+# Additional analysis (optional)
+if io_manager.verbose
+    println("\n" * "="^80)
+    println("FINAL STATISTICS")
+    println("="^80)
+    println("Total evaluations: $(length(io_manager.history["iteration"]))")
+    println("Best iteration: $(io_manager.best_tracker.iter)")
+    println("Best badness: $(round(io_manager.best_tracker.badness, digits=6))")
+    println("Best compliance: $(round(io_manager.best_tracker.compliance, digits=6))")
+    println("\nOptimization artifacts saved to: $SAVE_PATH")
+    println("="^80)
+end

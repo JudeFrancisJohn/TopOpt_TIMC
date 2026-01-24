@@ -1,17 +1,21 @@
 """
 adversarial_utils.jl
 
-Helper functions for adversarial topology optimization using KL expansion coefficients.
-This module provides utilities for:
-- Coefficient format conversion (matrix ↔ dictionary)
-- Objective function metrics (intermediate density fraction, severity)
-- Material field validation
-- Physical parameter reconstruction from coefficients
+Coefficient format conversion utilities for adversarial optimization.
+
+Following Single Responsibility Principle:
+- Handles ONLY coefficient format conversions (matrix ↔ dictionary)
+- Metrics moved to metrics.jl
+- Validation moved to validators.jl
+- I/O moved to io_manager.jl
+
+This module is now focused solely on data structure transformations.
 """
 
 using Printf
 using Statistics
 using LinearAlgebra
+using Dates
 
 # ============================================================================
 # COEFFICIENT FORMAT CONVERSION
@@ -65,188 +69,10 @@ function coeffs_dict_to_matrix(coeffs_dict::Dict{Symbol,Vector{Float64}}, proper
 end
 
 # ============================================================================
-# ADVERSARIAL OBJECTIVE METRICS
+# COEFFICIENT ANALYSIS
 # ============================================================================
 
-"""
-    compute_intermediary_fraction(X::Vector{Float64}; threshold_low=0.1, threshold_high=0.9)
 
-Compute fraction of design variables with intermediate densities.
-Higher values indicate more intermediate densities (worse for SIMP).
-
-# Arguments
-- `X`: Design density vector
-- `threshold_low`: Lower threshold for intermediate region
-- `threshold_high`: Upper threshold for intermediate region
-
-# Returns
-Fraction of elements in intermediate density range [threshold_low, threshold_high]
-"""
-function compute_intermediary_fraction(X::Vector{Float64}; threshold_low=0.1, threshold_high=0.9)
-    return sum((threshold_low .< X) .& (X .< threshold_high)) / length(X)
-end
-
-"""
-    compute_intermediary_severity(X::Vector{Float64}; threshold_low=0.1, threshold_high=0.9)
-
-Compute severity of intermediate densities by weighting by distance from 0/1.
-Elements near 0.5 contribute more than elements near boundaries.
-
-# Arguments
-- `X`: Design density vector
-- `threshold_low`: Lower threshold for intermediate region
-- `threshold_high`: Upper threshold for intermediate region
-
-# Returns
-Average severity score (0.0 to 0.5, where 0.5 is worst)
-"""
-function compute_intermediary_severity(X::Vector{Float64}; threshold_low=0.1, threshold_high=0.9)
-    intermediate_mask = (threshold_low .< X) .& (X .< threshold_high)
-    if sum(intermediate_mask) == 0
-        return 0.0
-    end
-    
-    # Distance from nearest boundary (0 or 1) - closer to 0.5 is worse
-    distances = min.(X, 1.0 .- X)
-    severity = sum(distances[intermediate_mask]) / sum(intermediate_mask)
-    
-    return severity
-end
-
-"""
-    compute_gray_indicator(X::Vector{Float64})
-
-Compute "gray" indicator metric used in topology optimization literature.
-Measures deviation from binary (0/1) solution.
-
-GI = (4/n) * sum(x_i * (1 - x_i))
-
-# Arguments
-- `X`: Design density vector
-
-# Returns
-Gray indicator value (0.0 = binary, 1.0 = all at 0.5)
-"""
-function compute_gray_indicator(X::Vector{Float64})
-    n = length(X)
-    return (4.0 / n) * sum(X .* (1.0 .- X))
-end
-
-"""
-    compute_combined_badness(X::Vector{Float64}, compliance::Float64; 
-                             w_frac=0.4, w_sev=0.4, w_gray=0.2,
-                             compliance_ref=1.0)
-
-Compute combined badness metric for adversarial optimization.
-Combines multiple intermediate density metrics.
-
-# Arguments
-- `X`: Design density vector
-- `compliance`: Compliance value from TopOpt run
-- `w_frac`: Weight for intermediate fraction
-- `w_sev`: Weight for severity
-- `w_gray`: Weight for gray indicator
-- `compliance_ref`: Reference compliance for normalization
-
-# Returns
-Combined badness score (higher = more intermediate densities)
-"""
-function compute_combined_badness(X::Vector{Float64}, compliance::Float64; 
-                                  w_frac=0.4, w_sev=0.4, w_gray=0.2,
-                                  compliance_ref=1.0, 
-                                  compliance_penalty_threshold=100.0,
-                                  stability_weight=0.1)
-    frac = compute_intermediary_fraction(X)
-    severity = compute_intermediary_severity(X)
-    gray = compute_gray_indicator(X)
-    
-    # Normalize severity to 0-1 (max severity is 0.5)
-    severity_norm = severity / 0.5
-    
-    # Base badness from intermediate densities
-    badness_raw = w_frac * frac + w_sev * severity_norm + w_gray * gray
-    
-    # Stability penalty: penalize extreme compliance that indicates numerical issues
-    # Use soft thresholding to avoid sharp discontinuities
-    compliance_ratio = compliance / compliance_ref
-    
-    if compliance_ratio > compliance_penalty_threshold
-        # Exponential penalty for very high compliance (approaching instability)
-        stability_penalty = stability_weight * (1.0 - exp(-(compliance_ratio - compliance_penalty_threshold) / 50.0))
-    elseif compliance_ratio < 1.0 / compliance_penalty_threshold
-        # Also penalize very low compliance (might indicate degenerate solutions)
-        stability_penalty = stability_weight * (1.0 - exp(-(1.0/compliance_ratio - compliance_penalty_threshold) / 50.0))
-    else
-        # No penalty in reasonable compliance range
-        stability_penalty = 0.0
-    end
-    
-    # Final badness: high is good, but penalized if approaching instability
-    badness = badness_raw - stability_penalty
-    
-    return badness
-end
-
-# ============================================================================
-# MATERIAL FIELD VALIDATION
-# ============================================================================
-
-"""
-    validate_material_field(mf, material_params; tolerance_factor=5.0)
-
-Validate that generated material field has physically reasonable values.
-Checks that values don't deviate too far from mean values.
-
-# Arguments
-- `mf`: MaterialField object
-- `material_params`: MaterialParams with mean values
-- `tolerance_factor`: Maximum allowed deviation in units of sigma
-
-# Returns
-Tuple (is_valid::Bool, diagnostics::Dict)
-"""
-function validate_material_field(mf, material_params; tolerance_factor=5.0)
-    diagnostics = Dict{String, Any}()
-    is_valid = true
-    
-    # Check for NaN or Inf
-    for field_name in [:μ_l, :μ_t, :α, :β, :λ]
-        field = getfield(mf, field_name)
-        if any(isnan.(field)) || any(isinf.(field))
-            diagnostics["$(field_name)_nan_inf"] = true
-            is_valid = false
-        end
-    end
-    
-    # Check for negative values in positive-definite parameters
-    if any(mf.μ_l .<= 0)
-        diagnostics["μ_l_negative"] = true
-        is_valid = false
-    end
-    if any(mf.μ_t .<= 0)
-        diagnostics["μ_t_negative"] = true
-        is_valid = false
-    end
-    if any(mf.λ .<= 0)
-        diagnostics["λ_negative"] = true
-        is_valid = false
-    end
-    
-    # Check for extreme deviations (optional warning, not failure)
-    μ_l_range = (minimum(mf.μ_l), maximum(mf.μ_l))
-    μ_t_range = (minimum(mf.μ_t), maximum(mf.μ_t))
-    
-    diagnostics["μ_l_range"] = μ_l_range
-    diagnostics["μ_t_range"] = μ_t_range
-    diagnostics["μ_l_mean"] = mean(mf.μ_l)
-    diagnostics["μ_t_mean"] = mean(mf.μ_t)
-    
-    return is_valid, diagnostics
-end
-
-# ============================================================================
-# COEFFICIENT ANALYSIS AND EXPORT
-# ============================================================================
 
 """
     compute_coefficient_stats(coeffs_mat::Matrix{Float64}, properties::Tuple)
