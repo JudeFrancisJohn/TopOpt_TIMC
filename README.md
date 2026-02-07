@@ -1,11 +1,11 @@
 # Penalty-based Topology Optimization for Transversely Isotropic Materials with Stochastic Material parameters
 
-A Finite element codebase to investigate optimization failures in transversely isotropic materials 
+A Finite element codebase to investigate optimization failures in  penalty-based Topology Optimization for transversely isotropic materials.
 
 ## Overview
 
 Capabilities:
-- Topology optimization with spatially stochastic material parameters (transversely isotropic materials)
+
 - MCMC-based exploration to find material parameter fields that lead to poor or intermediary density designs
 - Adversarial optimization using CMA-ES to maximize design uncertainty
 - Monte Carlo simulations for statistical analysis of design robustness
@@ -400,16 +400,6 @@ Edit `input/params_geom.jl`:
 nelx, nely = 120, 40  # Finer mesh
 lx, ly = 60, 16       # Larger domain
 ```
-
----
-
-## Testing
-
-Additional resources:
-
-- [MCMC and KL Guide](docs/MCMC_and_KL_Guide.md) - MCMC usage guide (if exists)
-- [Implementation Update](docs/IMPLEMENTATION_UPDATE.md) - Recent changes (if exists)
-- [Adversarial Optimization Guide](docs/ADVERSARIAL_OPTIMIZATION_GUIDE.md) - Adversarial setup (if exists)
 
 ---
 
