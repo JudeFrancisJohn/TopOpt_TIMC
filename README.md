@@ -2,6 +2,8 @@
 
 A Finite element codebase to investigate optimization failures in  penalty-based Topology Optimization for transversely isotropic materials.
 
+![Topology Optimization Overview](utils/assets/Topology%20Optimization_presentation2.png)
+
 ## Overview
 
 Capabilities:
