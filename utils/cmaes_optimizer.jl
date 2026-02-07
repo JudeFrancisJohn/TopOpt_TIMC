@@ -31,6 +31,7 @@ mutable struct CMAESOptimizer <: AbstractAdversarialOptimizer
     max_iterations::Int
     population_size::Int
     initial_sigma::Float64
+    bboptim_method::Symbol
     
     # Algorithm-specific tracking (not I/O)
     compliance_history::Vector{Float64}
@@ -41,7 +42,8 @@ mutable struct CMAESOptimizer <: AbstractAdversarialOptimizer
     function CMAESOptimizer(config::OptimizerConfig;
                            max_iterations::Int=100,
                            population_size::Int=0,
-                           initial_sigma::Float64=0.5)
+                           initial_sigma::Float64=0.5,
+                           bboptim_method::Symbol=:adaptive_de_rand_1_bin_radiuslimited)
         
         # Auto-determine population size if needed
         n_params = sum(values(config.n_modes))
@@ -49,7 +51,7 @@ mutable struct CMAESOptimizer <: AbstractAdversarialOptimizer
             population_size = 4 + floor(Int, 3 * log(n_params))
         end
         
-        new(config, max_iterations, population_size, initial_sigma,
+        new(config, max_iterations, population_size, initial_sigma, bboptim_method,
             Float64[], Ref(-Inf), Ref{Union{Nothing, Matrix{Float64}}}(nothing), Ref{Union{Nothing, Vector{Float64}}}(nothing))
     end
 end
@@ -151,7 +153,7 @@ function optimize!(optimizer::CMAESOptimizer, objective_fn::Function,
         objective_wrapper;
         SearchRange = search_range,
         NumDimensions = length(x0),
-        Method = :adaptive_de_rand_1_bin_radiuslimited,
+        Method = optimizer.bboptim_method,
         MaxFuncEvals = optimizer.max_iterations,
         TraceMode = :compact
     )

@@ -1,0 +1,6 @@
+Best iteration metadata
+timestamp: 2026-01-26 00:29:42
+badness: 0.406545
+compliance: 28.843430
+iteration: 23
+vtu_path: c:\Users\judef\Desktop\COMMAS\SEM4\TopOpt\output\adversarial_20260126_0018\best_iteration_0023.vtu
