@@ -72,20 +72,20 @@ run_logs = multiple_runs(100)  # 100 independent samples with different seeds
 ```
 TopOpt/
 ├── src/                                      # Main drivers
-│   ├── COPY_stochastic_modified_v2 copy 2_proxy.jl   # Main stochastic driver (CURRENT) ⭐
+│   ├── COPY_stochastic_modified_v2 copy 2_proxy.jl   # Main stochastic driver (CURRENT) 
 │   ├── COPY_stochastic_modified_v2_MC.jl            # Base driver for Monte Carlo runs
 │   ├── geom_BC.jl                                    # Geometry and boundary conditions
 │   └── ...                                           # Legacy versions
 │
 ├── test/                                     # Test scripts and experiments
-│   ├── proxy_new.jl                         # Adversarial optimization driver ⭐
+│   ├── proxy_new.jl                         # Adversarial optimization driver 
 │   ├── mhmc_run.jl                          # MCMC example (educational)
 │   ├── test_adversarial_setup.jl           # Test adversarial components
 │   └── unit/                                # Unit tests
 │
 ├── utils/                                    # Core utilities
-│   ├── stochastic_utils.jl                  # KL expansion (3-function architecture) ⭐
-│   ├── FE_updated_stoch.jl                  # FE solver + material handling ⭐
+│   ├── stochastic_utils.jl                  # KL expansion (3-function architecture) 
+│   ├── FE_updated_stoch.jl                  # FE solver + material handling 
 │   ├── opt.jl                               # OC update + sensitivity filter
 │   ├── mcmc_utils.jl                        # MCMC helper functions
 │   ├── adversarial_optimizer.jl             # Adversarial optimization wrapper
@@ -100,7 +100,7 @@ TopOpt/
 │   └── diagnostic_utils.jl                  # Debugging utilities
 │
 ├── input/                                    # Configuration parameters
-│   ├── params_mat.jl                        # Material parameters ⭐
+│   ├── params_mat.jl                        # Material parameters 
 │   ├── params_geom.jl                       # Geometry (mesh, dimensions)
 │   ├── params_topopt.jl                     # Topology optimization settings
 │   ├── params_adversarial.jl                # Adversarial optimization config
