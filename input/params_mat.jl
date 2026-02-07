@@ -4,7 +4,7 @@
 μ_t   = 1.0
 alpha = 1.0
 beta  = 1.0
-angle = 0.0  # Default fiber angle (can be overridden by multi_angle_topopt.jl)
+angle = 0.01  # Default fiber angle (can be overridden by multi_angle_topopt.jl)
 
 # Select which material properties are treated as spatial random fields via KL expansion.
 # Choose from symbols: :μ_l, :μ_t, :α, :β, :λ, :angle

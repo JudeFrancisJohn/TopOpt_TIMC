@@ -6,6 +6,7 @@ Generates material fields from KL coefficients and runs topology optimization.
 """
 
 using Statistics
+using Dates
 
 include("metrics.jl")
 include("validators.jl")
@@ -64,6 +65,8 @@ function evaluate_objective(coeffs_mat::Matrix{Float64},
     
     # Generate KL fields
     result_fields = Dict{Symbol, Any}()
+    debug_log = joinpath(output_root, "field_generation_debug.txt")
+    
     for prop_sym in properties
         coeffs_for_prop = coeffs_dict[prop_sym]
         field = sample_KL_field(
@@ -74,6 +77,13 @@ function evaluate_objective(coeffs_mat::Matrix{Float64},
         # Store with Latin name (build_material_field expects :alpha, :beta)
         store_name = get(PROPERTY_MAP, prop_sym, prop_sym)
         result_fields[store_name] = field
+        
+        # DEBUG: Log field statistics to file
+        debug_msg = "[$(Dates.format(Dates.now(), "HH:MM:SS"))] Generated $prop_sym → $store_name: min=$(minimum(field)), max=$(maximum(field)), mean=$(mean(field)), std=$(std(field))\n"
+        open(debug_log, "a") do io
+            write(io, debug_msg)
+        end
+        println("  [DEBUG] $prop_sym → $store_name logged to $debug_log")
     end
     
     # Add constant properties not varied by KL
