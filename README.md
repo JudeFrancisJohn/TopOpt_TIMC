@@ -1,6 +1,6 @@
-# TopOpt - Stochastic Material Parameter Topology Optimization
+# Penalty-based Topology Optimization for Transversely Isotropic Materials with Stochastic Material parameters
 
-A Julia framework for topology optimization with spatially varying stochastic material parameters. Combines finite element analysis (FEA), Karhunen-Loève (KL) expansion for random field generation, MCMC exploration, and adversarial optimization.
+A Finite element codebase to investigate optimization failures in transversely isotropic materials 
 
 ## Overview
 
@@ -433,8 +433,8 @@ If you use this code in your research, please cite:
 
 ```bibtex
 @software{topopt_stochastic_2026,
-  title = {TopOpt: Stochastic Material Parameter Topology Optimization},
-  author = {[Your Name]},
+  title = {A study on penalty-based topology Optimization of transversely isotropic materials with stochastic material parameters},
+  author = {Jude Francis},
   year = {2026},
   url = {https://github.com/JudeFrancisJohn/TopOpt_TIMC}
 }
