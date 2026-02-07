@@ -41,7 +41,7 @@ include("../utils/cmaes_optimizer.jl")
 
 # Create output directory
 const OUTPUT_ROOT = normpath(joinpath(@__DIR__, "..", "output"))
-dt_str = Dates.format(Dates.now(), "yyyymmdd_HH")
+dt_str = Dates.format(Dates.now(), "yyyymmdd_HHMM")
 const SAVE_PATH = joinpath(OUTPUT_ROOT, "adversarial_$(dt_str)")
 mkpath(SAVE_PATH)
 
@@ -185,7 +185,8 @@ if isempty(kl_modes_dict)
         println("\nComputing eigenmodes for $prop_sym...")
         println("  σ = $sigma, Lc = $Lc, N_modes = $N_MODES_PER_PROP")
         
-        mode_type = (prop_sym in (:μ_l, :μ_t, :λ)) ? :lognormal : :additive
+        # Get mode type from configuration
+        mode_type = get(KL_MODES_ADVERSARIAL, prop_sym, :lognormal)
         
         kl_modes = compute_KL_eigenmodes(
             mp, coords_elem, prop_sym, sigma;
@@ -254,12 +255,13 @@ opt_config = OptimizerConfig(
 # SELECT AND CONFIGURE OPTIMIZER
 # ============================================================================
 
-optimizer = if OPTIMIZER_TYPE == :cmaes
+optimizer = if OPTIMIZER_TYPE == :blackboxoptim
     CMAESOptimizer(
         opt_config;
         max_iterations=MAX_ITERATIONS_ADVERSARIAL,
         population_size=POPULATION_SIZE_ADVERSARIAL,
-        initial_sigma=INITIAL_SIGMA_ADVERSARIAL
+        initial_sigma=INITIAL_SIGMA_ADVERSARIAL,
+        bboptim_method=BBOPTIM_METHOD
     )
 elseif OPTIMIZER_TYPE == :simulated_annealing
     # SimulatedAnnealingOptimizer(opt_config; ...)  # To be implemented
