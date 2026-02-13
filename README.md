@@ -7,12 +7,6 @@ A Finite element codebase to investigate optimization failures in  penalty-based
 ![Topology Optimization Overview](utils/assets/Topology%20Optimization_presentation2_st2.png)
 ## Overview
 
-Capabilities:
-
-- MCMC-based exploration to find material parameter fields that lead to poor or intermediary density designs
-- Adversarial optimization using CMA-ES to maximize design uncertainty
-- Monte Carlo simulations for statistical analysis of design robustness
-- Efficient KL expansion with pre-computed eigenmodes for fast sampling
 
 Features:
 - Ferrite.jl-based finite element solver with nonlinear capabilities
@@ -215,7 +209,7 @@ while change > 0.01 && loop < maxloop
 end
 ```
 
-### 4. MCMC Exploration (test/MC_run_v2.jl)
+### 4. [!Obsolete] MCMC Exploration (test/MC_run_v2.jl) [!Obsolete]
 
 Finds KL coefficients that produce designs with high intermediate densities (considered "bad" or smudged designs).
 
@@ -225,7 +219,7 @@ badness = DENSITY_WEIGHT * (proportion of elements with 0.3 < x < 0.7)
         + COMPLIANCE_WEIGHT * compliance
 ```
 
-**Metropolis-Hastings Algorithm:**
+**[!Obsolete] Metropolis-Hastings Algorithm:**
 ```julia
 # Propose new coefficients
 proposed_coeffs = current_coeffs + randn(N_modes) * PROPOSAL_SIGMA
@@ -313,7 +307,7 @@ const POPULATION_SIZE = 20
 const INITIAL_SIGMA = 1.0
 ```
 
-### MCMC (input/params_MCMC.jl)
+### [!Obsolete] MCMC (input/params_MCMC.jl)
 ```julia
 const N_CHAIN = 20              # MCMC iterations
 const BURN_IN = 6               # Burn-in period
@@ -346,7 +340,7 @@ Contains:
 - `adversarial_results.jld2` - Full results (coefficients, history, best design)
 - VTK files for best design
 
-### MCMC Chains
+### [!Obsolete] MCMC Chains
 Location: `output/mcmc_chain_YYYYMMDD_HHMMSS.jld2`
 
 Contents:
@@ -380,7 +374,7 @@ julia --project=. test/test_adversarial_setup.jl
 # Verifies eigenmode computation, field generation, and objective evaluation
 ```
 
-### Adjust MCMC Acceptance Rate
+### [!Obsolete] Adjust MCMC Acceptance Rate
 Target: 20-40% acceptance rate
 
 Too low (<10%):
